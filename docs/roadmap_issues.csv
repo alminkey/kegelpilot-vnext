@@ -1,0 +1,17 @@
+Title,Body,Milestone,Labels
+Scaffold project (Vite + Svelte + TS),"Init repo, lint/format, design tokens, global layout (header/tabbar), routes",M0 – Skeleton,"type:setup,priority:high"
+Define adapters & services interfaces,"`BillingService`, `NotificationsService`, `StorageService`, `IntegrityService`",M0 – Skeleton,"type:arch,priority:high"
+Implement kpStore + types,"Single source of truth, events: `progress-updated`, `session-complete`, `day-rollover`",M1 – Core & Store,type:store
+Clock + bonus window logic (00–04),Day rollover + bonus window rules,M1 – Core & Store,type:logic
+Ranks: Rang 1 + V1/V2/V3 plan po danima,Auto izbor varijacija po danu,M1 – Core & Store,type:logic
+Storage (IndexedDB/localForage) + migrations,"Persist plan, daily_progress, sessions, reminders",M1 – Core & Store,type:storage
+Training engine + UI (ring/pulse),"2s PRIPREMI SE → STEGNI/ZADRŽI/OPUSTI, STOP lock, devShort",M2 – Trening,type:feature
+Keep screen on + pause on call,Foreground service adapter,M2 – Trening,type:android
+Home: Trenutni cilj + Trening za danas,"Klikovi: cilj → Napredak, trening → Trening",M3 – Početna,type:feature
+Home: hero + mini metrike + savjet + značke,Sekcije kao u blueprintu,M3 – Početna,type:ui
+Edu: akordeon sadržaj,"5 kartica, copy prema blueprintu",M4 – Edu,type:content
+Napredak: sažetak + cilj ranga,Kasnije grafovi/heatmap,M5 – Napredak,type:feature
+Podsjetnici: UI + local notifications,Times picker + retries 2×/sat + channels,M6 – Podsjetnici,type:android
+PRO zid (gating),"Overlay/cta copy, free vs PRO logika",M7 – PRO zid,type:monetization
+Play Billing integracija,"Kupovina, entitlement cache (7d), restore",M8 – Play Billing,"type:monetization,priority:high"
+Polish & QA,"UX, pristupačnost, crash/report, i18n skeleton",M9 – Polish & QA,type:qa

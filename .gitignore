@@ -1,0 +1,22 @@
+# Node / Build
+node_modules/
+dist/
+.vite/
+.svelte-kit/
+
+# Capacitor / Android
+android/.gradle/
+android/app/build/
+android/build/
+
+# Logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# IDE / OS / Env
+.vscode/
+.DS_Store
+Thumbs.db
+.env
+.env.*
