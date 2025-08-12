@@ -1,13 +1,17 @@
 # KegelPilot vNext (Android‑first starter)
 
+WIP: Tab bar skeleton (feat/tabbar)
+
 Android‑first skeleton sa Svelte + Vite + TypeScript + Capacitor. Sadrži početne ekrane: Početna, Trening, Edu, Napredak, Profil, i minimalni `kpStore`.
 
 ## Zahtjevi
+
 - Node 18+
 - Android Studio (za build i pokretanje na telefonu)
 - JDK 17 (preporučeno kroz Android Studio)
 
 ## Pokretanje (web dev)
+
 ```bash
 npm install
 npm run dev
@@ -15,6 +19,7 @@ npm run dev
 ```
 
 ## Android (Capacitor)
+
 ```bash
 # Build web dijela i sinhronizacija u android/ projekat
 npm run build
@@ -24,12 +29,14 @@ npx cap open android  # otvori u Android Studio
 ```
 
 U Android Studio:
+
 - Poveži telefon (USB debugging) ili emuliraj Pixel/AVD.
 - Run ▶
 
 > Skripta `npm run cap:android` radi build + sync + open u jednom potezu.
 
 ## Struktura
+
 ```
 src/
   app/        (layout, Header, Tabbar, App.svelte)
@@ -41,6 +48,7 @@ src/
 ```
 
 ## Šta dalje
+
 - Dodati `services/NotificationsService` i adapter za Android (Capacitor Local Notifications).
 - Dodati Play Billing adapter (stub → prava integracija).
 - Implementirati dnevnu logiku (00–04 bonus), streak, i rangove u `core/` + `kpStore`.
