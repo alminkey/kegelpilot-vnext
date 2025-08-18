@@ -1,25 +1,54 @@
 <script lang="ts">
-  export let screen:'home'|'training'|'edu'|'progress'|'profile' = 'home';
-  const tabs = [
-    { id:'home', label:'Početna', icon:'M3 12h18' },
-    { id:'training', label:'Trening', icon:'M12 2v20' },
-    { id:'edu', label:'Edu', icon:'M4 6h16M4 12h16M4 18h16' },
-    { id:'progress', label:'Napredak', icon:'M3 17l6-6 4 4 7-7' },
-    { id:'profile', label:'Profil', icon:'M12 12a5 5 0 1 0 0-10a5 5 0 0 0 0 10zm-7 9a7 7 0 0 1 14 0' }
+  import { route, go, type Tab } from '../store/router';
+
+  type Item = { key: Tab; label: string };
+  const items: Item[] = [
+    { key: 'home',     label: 'Početna' },
+    { key: 'training', label: 'Trening' },
+    { key: 'edu',      label: 'Edu' },
+    { key: 'progress', label: 'Napredak' },
+    { key: 'profile',  label: 'Profil' }
   ];
-  function go(id:string){ screen=id as any; location.hash = id; }
+
+  function nav(tab: Tab) {
+    go(tab); // sync hash + store
+  }
 </script>
 
-<nav class="tabbar">
-  <div class="container center" style="padding:8px 6px">
-    {#each tabs as t}
-      <button
-        on:click={()=>go(t.id)}
-        class="center"
-        style="gap:8px;padding:10px 12px;border:none;background:transparent;color:{screen===t.id?'#fff':'var(--muted)'};font-weight:{screen===t.id?800:600};transform:{screen===t.id?'scale(1.02)':'none'}">
-        <span style="display:inline-block;width:18px;height:18px;border:2px solid {screen===t.id?'#fff':'var(--muted)'};border-radius:4px"></span>
-        <span>{t.label}</span>
-      </button>
-    {/each}
-  </div>
+<nav class="tabbar" role="tablist" aria-label="Glavna navigacija">
+  {#each items as it}
+    <button
+      type="button"
+      role="tab"
+      class:active={$route === it.key}
+      aria-current={$route === it.key ? 'page' : undefined}
+      on:click={() => nav(it.key)}
+    >
+      {it.label}
+    </button>
+  {/each}
 </nav>
+
+<style>
+  .tabbar {
+    position: sticky; bottom: 0; left: 0; right: 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    padding: 10px 12px;
+    background: #0f1115;
+    border-top: 1px solid rgba(255,255,255,.08);
+    z-index: 50;          /* iznad sadržaja */
+    pointer-events: auto; /* sigurno prima klikove */
+  }
+  button {
+    appearance: none; border: 0; background: transparent;
+    color: #c9d1d9; padding: 8px 6px; border-radius: 10px;
+    font-size: 0.95rem; cursor: pointer;
+  }
+  button.active {
+    background: rgba(102, 230, 168, .15);
+    color: #66E6A8;
+    font-weight: 700;
+  }
+</style>
