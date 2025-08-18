@@ -1,33 +1,27 @@
-// src/store/router.ts
 import { writable } from "svelte/store";
 
-export type Tab = "home" | "trainer" | "edu" | "progress" | "profile";
+export type Tab = "home" | "training" | "edu" | "progress" | "profile";
 
-// interni store za aktivni tab
-const _tab = writable<Tab>("home");
-
-// javni read-only API
-export const route = { subscribe: _tab.subscribe };
-
-// programatska navigacija
-export const go = (tab: Tab) => {
-  if (typeof window !== "undefined") {
-    _tab.set(tab);
-    location.hash = "#" + tab;
-  }
-};
-
-// inicijalizacija i sync sa hash-om
-export function initRouter() {
-  const normalize = (h: string): Tab => {
-    const t = (h.replace("#", "") || "home") as Tab;
-    return (
-      ["home", "trainer", "edu", "progress", "profile"] as const
-    ).includes(t)
-      ? t
-      : "home";
-  };
-  const apply = () => _tab.set(normalize(location.hash));
-  window.addEventListener("hashchange", apply);
-  apply();
+function tabFromHash(hash: string): Tab {
+  const name = hash.replace(/^#\/?/, "") || "home";
+  const allowed: readonly Tab[] = [
+    "home",
+    "training",
+    "edu",
+    "progress",
+    "profile",
+  ] as const;
+  return (allowed as readonly string[]).includes(name) ? (name as Tab) : "home";
 }
+
+export const route = writable<Tab>(tabFromHash(location.hash));
+
+export function go(tab: Tab) {
+  const next = `#/${tab}`;
+  if (location.hash !== next) location.hash = next;
+  route.set(tab);
+}
+
+window.addEventListener("hashchange", () => {
+  route.set(tabFromHash(location.hash));
+});
