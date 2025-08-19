@@ -1,39 +1,46 @@
 <script lang="ts">
   import Header from './Header.svelte';
   import Tabbar from './Tabbar.svelte';
+  import { route } from '@/store/router';
 
-  // ROUTER store (hash)
-  import { route } from '../store/router';
-
-  // Ekrani
-  import Home from '../features/home/Home.svelte';
-  import Training from '../features/training/Training.svelte';
-  import Edu from '../features/edu/Edu.svelte';
-  import Progress from '../features/progress/Progress.svelte';
-  import Profile from '../features/profile/Profile.svelte';
-
-  // Screen je samo "mirror" na $route
-  $: screen = $route;
-  const screens = {
-    home: Home,
-    training: Training,
-    edu: Edu,
-    progress: Progress,
-    profile: Profile
-  } as const;
-
-  $: Comp = screens[screen] || Home;
+  import Home     from '@/features/home/Home.svelte';
+  import Training from '@/features/training/Training.svelte';
+  import Progress from '@/features/progress/Progress.svelte';
+  import Profile  from '@/features/profile/Profile.svelte';
+  import Edu      from '@/features/edu/Edu.svelte'; // prilagodi ime ako je drugo
 </script>
 
-<div class="app">
-  <Header />
-  <main class="page">
-    <svelte:component this={Comp} />
-  </main>
-  <Tabbar />
-</div>
+<Header />
+
+<main class="page">
+  {#if $route === 'home'}
+    <Home />
+  {:else if $route === 'training'}
+    <Training />
+  {:else if $route === 'progress'}
+    <Progress />
+  {:else if $route === 'profile'}
+    <Profile />
+  {:else if $route === 'edu'}
+    <Edu />
+  {:else}
+    <Home />
+  {/if}
+</main>
+
+<Tabbar />
 
 <style>
-  .app { min-height:100dvh; display:flex; flex-direction:column; }
-  .page { flex:1; }
+  :global(html, body){ margin:0; height:100%; background:#0b0f14; }
+  :global(*), :global(*::before), :global(*::after){ box-sizing:border-box; }
+
+  .page{
+    /* fiksni tabbar prostor */
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0));
+    /* spriječi širenje, centriraj, ali dozvoli 100% na mobu */
+    max-width: 680px;
+    width: 100%;
+    margin: 0 auto;
+    overflow-x: clip;
+  }
 </style>
