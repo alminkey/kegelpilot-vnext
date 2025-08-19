@@ -1,4 +1,5 @@
 // src/store/kpStore.ts
+import { localDateKey } from "./date";
 import { writable, derived, get } from "svelte/store";
 
 // ——— Tipovi ———
@@ -25,7 +26,6 @@ type State = {
 const LS_KEY = "kp_today_v1";
 const FEEDBACK_LS = "kp_last_feedback_v1";
 const RANK_FB_LS = "kp_fb_by_rank_v1";
-const todayIso = () => new Date().toISOString().slice(0, 10);
 
 function loadPersist(): TodayProgress | null {
   try {
@@ -36,8 +36,12 @@ function loadPersist(): TodayProgress | null {
       done: number;
       target: number;
     };
-    if (data.date !== todayIso()) return null;
-    return { done: data.done ?? 0, target: Math.max(1, data.target ?? 2) };
+    const today = localDateKey(); // ✅ lokalna TZ
+    if (data.date === today) {
+      return { done: data.done ?? 0, target: Math.max(1, data.target ?? 2) };
+    }
+    // Novi lokalni dan: zadrži target, resetuj done
+    return { done: 0, target: Math.max(1, data.target ?? 2) };
   } catch {
     return null;
   }
@@ -46,7 +50,7 @@ function savePersist(p: TodayProgress) {
   try {
     localStorage.setItem(
       LS_KEY,
-      JSON.stringify({ date: todayIso(), done: p.done, target: p.target })
+      JSON.stringify({ date: localDateKey(), done: p.done, target: p.target })
     );
   } catch {}
 }
@@ -119,7 +123,7 @@ function persistFeedback(fb: SessionFeedback) {
 type RankFeedbackState = {
   state: "ack_ok" | "too_hard";
   delta?: number;
-  updated: string;
+  updated: string; // ISO timestamp je ok
 };
 type RankFeedbackMap = Record<string, RankFeedbackState>;
 
@@ -266,7 +270,7 @@ export function feedbackOkRank() {
     updated: new Date().toISOString(),
   };
   rankFeedback.set({ ...get(rankFeedback), [rank]: entry });
-  const fb: SessionFeedback = { date: todayIso(), kind: "ok" };
+  const fb: SessionFeedback = { date: localDateKey(), kind: "ok" }; // ✅ lokalni datum
   lastFeedback.set(fb);
   persistFeedback(fb);
   change.set(Date.now());
@@ -279,7 +283,7 @@ export function feedbackTooHardRank(delta: number) {
     updated: new Date().toISOString(),
   };
   rankFeedback.set({ ...get(rankFeedback), [rank]: entry });
-  const fb: SessionFeedback = { date: todayIso(), kind: "too_hard", delta };
+  const fb: SessionFeedback = { date: localDateKey(), kind: "too_hard", delta }; // ✅ lokalni datum
   lastFeedback.set(fb);
   persistFeedback(fb);
   change.set(Date.now());
@@ -319,8 +323,80 @@ export const kpStore = {
   feedbackTooHard,
 };
 
+// --- HARD RESET: sve kao poslije instalacije ---
+export function hardReset() {
+  const LS_HISTORY = "kp_history_v1";
+  const LS_REMINDER = "kp_reminder_v1";
+  const LS_REMINDER_LAST = "kp_reminder_last_v1";
+  const LS_TODAY = "kp_today_v1";
+  const LS_GOAL = "kp_goal_v1";
+  const LS_RANK_FEEDBACK = "kp_rank_feedback_v1";
+
+  try {
+    localStorage.removeItem(LS_HISTORY);
+    localStorage.removeItem(LS_REMINDER);
+    localStorage.removeItem(LS_REMINDER_LAST);
+    localStorage.removeItem(LS_TODAY);
+    localStorage.removeItem(LS_GOAL);
+    localStorage.removeItem(LS_RANK_FEEDBACK);
+  } catch {}
+
+  s.update((st) => {
+    st.today = { done: 0, target: 2 };
+    st.goal = { rank: 1, day: 1, length: 5, percent: 0 };
+    (st as any).rankFeedback = {};
+    return st;
+  });
+
+  try {
+    change.set(Date.now());
+  } catch {}
+}
+
 // ——— Auto-persist svake promjene ———
 s.subscribe((st) => {
   if (typeof localStorage === "undefined") return;
   savePersist(st.today);
 });
+
+// ——— Čuvar ponoći (lokalni datum) ———
+if (typeof window !== "undefined") {
+  const checkDay = () => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      const stored = raw
+        ? (JSON.parse(raw) as { date: string; target: number })
+        : null;
+      const now = localDateKey();
+      if (!stored || stored.date !== now) {
+        s.update((st) => {
+          const next: TodayProgress = {
+            done: 0,
+            target: stored?.target ?? st.today.target ?? 2,
+          };
+          const nextPercent = calcPercent(
+            st.goal.day,
+            st.goal.length,
+            next.done,
+            next.target
+          );
+          const ns: State = {
+            ...st,
+            today: next,
+            goal: { ...st.goal, percent: nextPercent },
+          };
+          savePersist(next);
+          return ns;
+        });
+        emitProgressUpdated();
+      }
+    } catch {}
+  };
+  // svake minute + kad se tab probudi
+  setInterval(checkDay, 60_000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) checkDay();
+  });
+  // inicijalni check (u slučaju hladnog starta poslije ponoći)
+  setTimeout(checkDay, 0);
+}
