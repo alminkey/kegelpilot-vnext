@@ -1,32 +1,22 @@
 import { get } from "svelte/store";
 import { isPro } from "@/store/user";
 
-/** Ključevi koje ćemo koristiti na komponentama */
-export type FeatureKey =
-  | "rank>2"
-  | "edu.proLesson"
-  | "analytics.advanced"
-  | "reminders.multi"
-  | "training.customPlan"
-  | "integrations.health";
+export type FeatureKey = string;
 
-export function isAllowed(feature: FeatureKey, overrideIsPro?: boolean) {
-  const pro = overrideIsPro ?? get(isPro);
+// Jedan izvor istine: lista PRO-only feature ključeva
+export const PRO_ONLY_KEYS: ReadonlyArray<FeatureKey> = [
+  "reminders.multi",
+  "edu.advanced",
+  "training.all_ranks",
+  "analytics.reports",
+] as const;
 
-  if (pro) return true;
+// Interno za brzu provjeru
+const PRO_ONLY_SET = new Set<FeatureKey>(PRO_ONLY_KEYS);
 
-  // FREE pravila iz KP-PRO-PLAN (sažetak):
-  // - FREE: jezgro treninga, prva 2 ranga, osnovna edu, dnevni brojač, mini statistika, 1 podsjetnik...
-  // - PRO: sve ostalo (svi rangovi/programi, adaptivno, napredna analitika, više podsjetnika, specifični planovi, integracije...)
-  switch (feature) {
-    case "rank>2":
-    case "edu.proLesson":
-    case "analytics.advanced":
-    case "reminders.multi":
-    case "training.customPlan":
-    case "integrations.health":
-      return false; // zaključno za FREE
-    default:
-      return true;
-  }
+export function isAllowed(feature: FeatureKey): boolean {
+  // PRO otključava sve
+  if (get(isPro)) return true;
+  // FREE: zabranjeno sve što je u PRO listi
+  return !PRO_ONLY_SET.has(feature);
 }
