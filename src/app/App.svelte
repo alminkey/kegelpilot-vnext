@@ -2,7 +2,6 @@
   import Header from './Header.svelte';
   import Tabbar from './Tabbar.svelte';
   import { route } from "@/store/router";
-
   import Home     from '@/features/home/Home.svelte';
   import Training from '@/features/training/Training.svelte';
   import Progress from '@/features/progress/Progress.svelte';
