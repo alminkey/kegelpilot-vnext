@@ -1,18 +1,15 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import path from "node:path";
+import path from "path";
 
 export default defineConfig({
   plugins: [svelte()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
+      "@": path.resolve(__dirname, "src"), // @ → src
     },
   },
   server: {
-    host: true, // omogućava pristup s telefona (LAN)
-    port: 5173,
-    strictPort: false,
-    hmr: { protocol: "ws" },
+    host: true, // omogući pristup sa mobitela na LAN-u
   },
 });
