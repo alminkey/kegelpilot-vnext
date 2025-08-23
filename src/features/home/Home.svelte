@@ -2,6 +2,8 @@
   import { today, goal } from '@/store/kpStore';
   import { go } from '@/store/router';
   import { onMount } from 'svelte';
+  import ReminderCard from '@/components/ReminderCard.svelte';
+  import { localDateKey } from "@/store/date";
 
   $: dailyDone   = $today.done;
   $: dailyTarget = $today.target;
@@ -38,38 +40,28 @@
     history[key]=s; saveHistory();
   }
   function last7(){
-    const out: {date:string;status:DayStatus}[]=[];
-    const now=new Date();
-    for(let i=6;i>=0;i--){ const d=new Date(now); d.setDate(now.getDate()-i); const k=iso(d); out.push({date:k,status:history[k]??0}); }
-    return out;
+  const out: {date:string;status:DayStatus}[]=[];
+  const now=new Date();
+  for(let i=6;i>=0;i--){
+    const d=new Date(now); d.setDate(now.getDate()-i);
+    const k=localDateKey(d);
+    out.push({date:k,status:history[k]??0});
   }
+  return out;
+}
+
   $: week = last7();
 
   onMount(()=>{
     loadHistory(); updateTodayFromStore();
     const h = ()=>{ loadHistory(); updateTodayFromStore(); week = last7(); };
     document.addEventListener('progress-updated', h);
+    document.addEventListener('day-rollover', h); // ← NOVO: prelazak dana
+    document.addEventListener('tz-changed', h);   // ← NOVO: promjena vremenske zone/DST
     return ()=>document.removeEventListener('progress-updated', h);
+    document.removeEventListener('day-rollover', h);
+    document.removeEventListener('tz-changed', h);
   });
-
-  // Podsjetnik (in-app)
-  const LS_REMINDER='kp_reminder_v1', LS_REMINDER_LAST='kp_reminder_last_v1';
-  let reminderOn=false, reminderTime='19:00', tick:any=null;
-  function loadReminder(){ try{ const r=JSON.parse(localStorage.getItem(LS_REMINDER)||'{}'); reminderOn=!!r.on; reminderTime=r.time||'19:00'; }catch{} }
-  function saveReminder(){ try{ localStorage.setItem(LS_REMINDER, JSON.stringify({on:reminderOn,time:reminderTime})) }catch{} }
-  function toggleReminder(){ reminderOn=!reminderOn; saveReminder(); }
-  function setReminderTime(t:string){ reminderTime=t; saveReminder(); }
-  function startLoop(){ if(tick) clearInterval(tick); tick=setInterval(checkReminder, 30_000); }
-  function stopLoop(){ if(tick){ clearInterval(tick); tick=null; } }
-  function checkReminder(){
-    if(!reminderOn) return;
-    const now=new Date(); const hhmm=now.toTimeString().slice(0,5);
-    if(hhmm!==reminderTime) return;
-    const key=iso(now); if(localStorage.getItem(LS_REMINDER_LAST)===key) return;
-    localStorage.setItem(LS_REMINDER_LAST, key); alert('⏰ Vrijeme za Kegel trening!');
-  }
-  onMount(()=>{ loadReminder(); if(reminderOn) startLoop(); });
-  $: { if(reminderOn) startLoop(); else stopLoop(); }
 
   const labelFor = (d:string)=>['Ned','Pon','Uto','Sri','Čet','Pet','Sub'][new Date(d).getDay()];
 
@@ -131,9 +123,9 @@
   <!-- QUICK -->
   <div class="quick">
     <button class="q" on:click={() => go('training')}>
-  <span class="q-emoji">🏁</span>
-  <span class="q-t">Brzi start</span>
-</button>
+      <span class="q-emoji">🏁</span>
+      <span class="q-t">Brzi start</span>
+    </button>
     <button class="q" on:click={() => go('progress')}><span class="q-emoji">📈</span><span class="q-t">Napredak</span></button>
     <button class="q" on:click={() => go('edu')}><span class="q-emoji">🎓</span><span class="q-t">Edukacija</span></button>
   </div>
@@ -172,24 +164,8 @@
     </div>
   </div>
 
-  <!-- PODSJETNIK -->
-  <div class="card remind">
-    <div class="title">Podsjetnik</div>
-    <div class="remind-row">
-      <label class="switch" aria-label="Uključi podsjetnik">
-        <input type="checkbox" bind:checked={reminderOn} on:change={toggleReminder} />
-        <span></span>
-      </label>
-      <div class="remind-copy">
-        {#if reminderOn}
-          <div class="h">Danas u</div>
-          <input class="time" type="time" bind:value={reminderTime} on:change={() => setReminderTime(reminderTime)} />
-        {:else}
-          <div class="muted">Nema rasporeda — postavi vrijeme</div>
-        {/if}
-      </div>
-    </div>
-  </div>
+  <!-- PODSJETNIK (novi) -->
+  <ReminderCard />
 
   <!-- PRO (button – rješava a11y) -->
   <button type="button" class="card pro" on:click={openPro} aria-label="Otvori KegelPilot PRO">
@@ -198,7 +174,7 @@
       <ul>
         <li>Otključani svi Rankovi treninga</li>
         <li>Adaptivni plan (lakše/teže bez ručnog podešavanja)</li>
-        <li>Sedmični i mjesečni izvještaji</li>        
+        <li>Sedmični i mjesečni izvještaji</li>
         <li>Više podsjetnika + pametni nudge</li>
       </ul>
     </div>
@@ -325,18 +301,6 @@
   .dot.half{ background: radial-gradient(closest-side, rgba(255,255,255,.18), rgba(255,255,255,.06)); }
   .dot.full{ background:#0be2a0; border-color:rgba(11,226,160,.6); box-shadow:0 0 0 3px rgba(11,226,160,.16); color:#0f1115; font-weight:800; }
   .dot .lbl{ position:absolute; bottom:-18px; font-size:.78rem; opacity:.85; }
-
-  .remind{ padding:16px; }
-  .remind .remind-row{ display:flex; align-items:center; gap:16px; justify-content:space-between; }
-  .switch{ position:relative; width:52px; height:30px; flex:0 0 auto; }
-  .switch input{ display:none; }
-  .switch span{ position:absolute; inset:0; background:rgba(255,255,255,.12); border-radius:999px; }
-  .switch span::after{ content:""; position:absolute; width:24px; height:24px; top:3px; left:3px; border-radius:50%; background:#fff; transition: transform .2s ease; }
-  .switch input:checked + span{ background:rgba(11,226,160,.4); }
-  .switch input:checked + span::after{ transform:translateX(22px); }
-  .remind .remind-copy{ display:flex; align-items:center; gap:10px; flex:1 1 auto; }
-  .remind .remind-copy .h{ font-weight:800; }
-  .remind .time{ background:#0b0f14; border:1px solid rgba(255,255,255,.14); color:#e6ebef; padding:8px 10px; border-radius:10px; font-weight:700; min-width:110px; text-align:center; }
 
   .pro{
     display:flex; align-items:center; justify-content:space-between; gap:10px;

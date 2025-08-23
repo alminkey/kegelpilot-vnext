@@ -1,56 +1,29 @@
-import { writable, derived } from "svelte/store";
+import { writable } from "svelte/store";
 
-export type ProStatus = "free" | "pro";
+const KEY = "kp_is_pro";
 
-export type UserState = {
-  proStatus: ProStatus;
-  proSince?: string | null; // ISO lokalni datum
-  trial?: { startedAt: string; days: number } | null;
-};
-
-const KEY = "kp_user_v1";
-
-function load(): UserState {
+function read(): boolean {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as UserState;
-  } catch {}
-  return { proStatus: "free", proSince: null, trial: null };
+    return localStorage.getItem(KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
-function persist(v: UserState) {
+export const isPro = writable<boolean>(read());
+
+export function upgradeToPro() {
   try {
-    localStorage.setItem(KEY, JSON.stringify(v));
+    localStorage.setItem(KEY, "1");
   } catch {}
+  isPro.set(true);
 }
-
-function createUserStore() {
-  const { subscribe, update, set } = writable<UserState>(load());
-  subscribe(persist);
-
-  return {
-    subscribe,
-    set,
-    update,
-    upgradeToPro() {
-      update((u) => ({
-        ...u,
-        proStatus: "pro",
-        proSince: new Date().toISOString(),
-        trial: null,
-      }));
-    },
-    downgradeToFree() {
-      update((u) => ({ ...u, proStatus: "free" }));
-    },
-    startTrial(days = 7) {
-      update((u) => ({
-        ...u,
-        trial: { startedAt: new Date().toISOString(), days },
-      }));
-    },
-  };
+export function downgradeToFree() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {}
+  isPro.set(false);
 }
-
-export const user = createUserStore();
-export const isPro = derived(user, ($u) => $u.proStatus === "pro");
+export function togglePro() {
+  read() ? downgradeToFree() : upgradeToPro();
+}
