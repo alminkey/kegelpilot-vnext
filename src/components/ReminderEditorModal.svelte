@@ -1,50 +1,108 @@
 <script lang="ts">
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onDestroy } from "svelte";
   import type { EditorData } from "@/components/reminder-types";
+  import { validateReminder } from "@/store/reminders";
+  import type { ValidationError } from "@/store/reminders";
+  import { openPaywall } from "@/lib/gate";
+  import { lockScroll, unlockScroll } from "@/lib/scrollLock";
 
   export let open = false;
-  export let data: EditorData = { label: "Vrijeme za vježbu", hour: 19, minute: 0, enabled: true };
+  export let data: EditorData = {
+    label: "Vrijeme za vježbu",
+    hour: 19,
+    minute: 0,
+    enabled: true,
+    daysOfWeek: [1, 3, 5]
+  };
   export let mode: "create" | "edit" = "create";
 
-  const dispatch = createEventDispatcher<{ save: EditorData; close: void }>();
+  // Globalni scroll lock (ref-count)
+  $: open ? lockScroll() : unlockScroll();
+  onDestroy(() => unlockScroll());
 
-  // Lokalni editable state
+  const dispatch = createEventDispatcher<{
+    save: EditorData & { daysOfWeek: number[] };
+    close: void;
+  }>();
+
+  const DAYS = [
+    { i: 1, label: "Pon" },
+    { i: 2, label: "Uto" },
+    { i: 3, label: "Sri" },
+    { i: 4, label: "Čet" },
+    { i: 5, label: "Pet" },
+    { i: 6, label: "Sub" },
+    { i: 0, label: "Ned" },
+  ];
+
   let label = data.label;
   let hourStr = String(data.hour).padStart(2, "0");
   let minuteStr = String(data.minute).padStart(2, "0");
   let enabled = data.enabled;
 
-  // --- RE-SYNC SAMO KAD SE MODAL OTVORI ILI SE PROMIJENI 'data' REFERENCE ---
+  const fullWeek = () => [0, 1, 2, 3, 4, 5, 6];
+  let daysOfWeek: number[] =
+    Array.isArray((data as any).daysOfWeek) && (data as any).daysOfWeek.length
+      ? (data as any).daysOfWeek.slice().sort()
+      : fullWeek();
+
   let wasOpen = false;
   let lastDataRef: EditorData | null = null;
-
   function syncFromData() {
     label = data.label;
     hourStr = String(data.hour).padStart(2, "0");
     minuteStr = String(data.minute).padStart(2, "0");
     enabled = data.enabled;
+    daysOfWeek =
+      Array.isArray((data as any).daysOfWeek) && (data as any).daysOfWeek.length
+        ? (data as any).daysOfWeek.slice().sort()
+        : fullWeek();
+    vErrs = [];
+    limitErr = null;
+    otherErrs = [];
+  }
+  $: if (open && !wasOpen) { wasOpen = true; lastDataRef = data; syncFromData(); }
+  $: if (!open && wasOpen) { wasOpen = false; }
+  $: if (open && data && data !== lastDataRef) { lastDataRef = data; syncFromData(); }
+
+  function toggleDay(i: number) {
+    daysOfWeek = daysOfWeek.includes(i)
+      ? daysOfWeek.filter((d) => d !== i)
+      : [...daysOfWeek, i].sort();
   }
 
-  // kad se promijeni 'open' -> prvi put pređemo na true, povuci vrijednosti
-  $: if (open && !wasOpen) { wasOpen = true; lastDataRef = data; syncFromData(); }
-  $: if (!open && wasOpen) { wasOpen = false; } // reset “edge” detekcije
-
-  // ako parent pošalje NOVU referencu data dok je modal otvoren → povuci opet
-  $: if (open && data && data !== lastDataRef) { lastDataRef = data; syncFromData(); }
+  // Validacija/greške
+  let vErrs: ValidationError[] = [];
+  let limitErr: string | null = null;
+  let otherErrs: string[] = [];
 
   function save() {
     const h = parseInt(hourStr, 10);
     const m = parseInt(minuteStr, 10);
-    dispatch("save", {
-      id: data.id,
-      label: label.trim() || "Podsjetnik",
+
+    vErrs = validateReminder({
+      label: (label ?? "").trim() || "Podsjetnik",
       hour: isNaN(h) ? 19 : h,
       minute: isNaN(m) ? 0 : m,
-      enabled
+      daysOfWeek,
+    });
+
+    limitErr = vErrs.find((e) => e.kind === "limit")?.message ?? null;
+    otherErrs = vErrs.filter((e) => e.kind !== "limit").map((e) => e.message);
+
+    if (vErrs.length) return;
+
+    dispatch("save", {
+      id: (data as any).id,
+      label: (label ?? "").trim() || "Podsjetnik",
+      hour: isNaN(h) ? 19 : h,
+      minute: isNaN(m) ? 0 : m,
+      enabled,
+      daysOfWeek
     });
   }
 
-  // Notifikacije: status (HTTPS/localhost je potreban za pravi prompt)
+  // Notifications hint
   let notif: "default" | "denied" | "granted" | "unsupported" | "insecure" = "default";
   $: {
     try {
@@ -65,10 +123,9 @@
   const fmt = (h: string, m: string) => `${h}:${m}`;
 </script>
 
-
 {#if open}
   <div class="overlay" role="dialog" aria-modal="true">
-    <div class="modal">
+    <div class="modal" aria-describedby="rem-editor-errors">
       <div class="head">
         <h3>{mode === "create" ? "Dodaj podsjetnik" : "Uredi podsjetnik"}</h3>
         <button class="x" on:click={() => dispatch("close")} aria-label="Zatvori">✕</button>
@@ -98,14 +155,54 @@
           </div>
         </div>
 
+        <!-- Dani u sedmici -->
+        <div class="field" role="group" aria-label="Dani u sedmici">
+          <div class="lab">Dani u sedmici</div>
+          <div class="days">
+            {#each DAYS as d}
+              <button
+                type="button"
+                class:active={daysOfWeek.includes(d.i)}
+                aria-pressed={daysOfWeek.includes(d.i)}
+                on:click={() => toggleDay(d.i)}>
+                {d.label}
+              </button>
+            {/each}
+          </div>
+        </div>
+
         <label class="toggle">
-          <input type="checkbox" bind:checked={enabled} />
-          <span></span>
+          <input type="checkbox" bind:checked={enabled} role="switch" aria-checked={enabled} aria-label="Podsjetnik uključen" />
+          <span aria-hidden="true"></span>
           <div class="t-copy">
             <div class="t-h">Podsjetnik uključen</div>
             <div class="t-s">Ako je isključeno, zadržava postavke bez zvona</div>
           </div>
         </label>
+
+        <!-- PREMIUM limit poruka s CTA -->
+        {#if limitErr}
+          <div class="alert-premium" role="alert">
+            <span class="dot" aria-hidden="true"></span>
+            <span class="msg">{limitErr}</span>
+            <button
+              type="button"
+              class="btn-primary btn-compact"
+              on:click={() => openPaywall("reminders.multi", { source: "reminder_editor" })}
+            >
+              Postani PRO
+            </button>
+          </div>
+        {/if}
+
+        <!-- Ostale greške (live region) -->
+        <div id="rem-editor-errors" class="sr-live" aria-live="polite">
+          {#if otherErrs.length}
+            <ul class="errors">
+              {#each otherErrs as e}<li>{e}</li>{/each}
+            </ul>
+          {/if}
+        </div>
 
         {#if notif !== "granted"}
           <div class="note">
@@ -114,7 +211,6 @@
             {#if notif === "insecure"}
               <div class="n-s">
                 Za sistemske notifikacije treba <b>HTTPS</b> ili <b>localhost</b>.
-                Na lokalnoj mreži (http) dobit ćeš fallback <b>alert</b> u vrijeme podsjetnika.
               </div>
               <button class="btn-ghost" aria-disabled="true" style="opacity:.6; pointer-events:none;">Dozvoli</button>
             {:else if notif === "unsupported"}
@@ -128,7 +224,7 @@
       </div>
 
       <div class="foot">
-        <button class="btn-ghost" on:click={() => dispatch("close")}>Odustani</button>
+        <button class="btn-ghost" on:click={() => dispatch("close")} data-autofocus>Odustani</button>
         <button class="btn-primary" on:click={save}>{mode === "create" ? "Spremi" : "Sačuvaj"}</button>
       </div>
     </div>
@@ -156,8 +252,6 @@
     width:100%; padding:10px 12px; border-radius:12px;
     background:#0b0f14; border:1px solid rgba(255,255,255,.14); color:#e6ebef; font-weight:600;
   }
-
-  /* Time row */
   .time-row{ display:flex; align-items:center; gap:8px; }
   .select{
     background:#0b0f14; color:#e6ebef; border:1px solid rgba(255,255,255,.14);
@@ -169,21 +263,33 @@
     background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
     border-radius:10px; padding:8px 10px;
   }
-
+  .days { display:flex; gap:.5rem; flex-wrap:wrap; }
+  .days button{
+    padding:.4rem .6rem; border-radius:.5rem; border:1px solid rgba(255,255,255,.30);
+    background:transparent; color:#e6ebef; font-weight:700; opacity:.8; cursor:pointer;
+  }
+  .days button.active{ opacity:1; outline:2px solid currentColor; }
   .toggle{ display:flex; align-items:center; gap:12px; border-radius:12px; padding:10px 10px;
            background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.10); }
-  .toggle input{ display:none; }
+  .toggle input{ appearance: none; width:1px; height:1px; position:absolute; opacity:0; }
   .toggle span{ position:relative; width:52px; height:30px; border-radius:999px; background:rgba(255,255,255,.12); flex:0 0 auto; }
   .toggle span::after{ content:""; position:absolute; width:24px; height:24px; top:3px; left:3px; border-radius:50%; background:#fff; transition:transform .2s ease; }
   .toggle input:checked + span{ background:rgba(11,226,160,.4); }
   .toggle input:checked + span::after{ transform:translateX(22px); }
   .t-copy .t-h{ font-weight:800; }
   .t-copy .t-s{ font-size:.9rem; opacity:.85; }
-
+  .alert-premium{
+    display:flex; align-items:center; gap:10px;
+    color:#ff6b6b; padding:8px 10px; border-radius:12px;
+    background:rgba(255,107,107,.10); border:1px solid rgba(255,107,107,.35);
+  }
+  .alert-premium .dot{ width:8px; height:8px; border-radius:50%; background:#ff6b6b; display:inline-block; }
+  .alert-premium .msg{ flex:1 1 auto; }
+  .errors { margin:.5rem 0; color:#ff6b6b; }
+  .errors li{ margin-left:1rem; }
   .note{ margin-top:4px; padding:10px; border-radius:12px; background:rgba(255,166,87,.10); border:1px solid rgba(255,166,87,.25); }
   .n-h{ font-weight:800; color:#FFA657; margin-bottom:4px; }
   .n-s{ font-size:.9rem; opacity:.95; margin-bottom:8px; }
-
   .foot{ display:flex; justify-content:flex-end; gap:10px; padding-top:10px; }
   .btn-ghost{
     background:none; border:1px solid rgba(255,255,255,.18); color:#e6ebef;
@@ -193,4 +299,5 @@
     background:#0be2a0; color:#0f1115; border:none; border-radius:12px; padding:10px 14px;
     font-weight:800; cursor:pointer; box-shadow:0 10px 24px rgba(11,226,160,.18);
   }
+  .btn-compact{ padding:8px 12px; font-size:.92rem; }
 </style>

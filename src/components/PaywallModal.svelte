@@ -1,22 +1,64 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount, onDestroy } from "svelte";
+  import { createEventDispatcher, onDestroy } from "svelte";
   import { upgradeToPro } from "@/store/user";
+  import { PROVIDER } from "@/lib/payments";
+  import { lockScroll, unlockScroll } from "@/lib/scrollLock";
 
+  
   export let open = false;
+
+  type Plan = "monthly" | "annual";
 
   const dispatch = createEventDispatcher<{ close: void; upgrade: void }>();
 
-  function close()   { dispatch("close"); }
-  function upgrade() { upgradeToPro(); dispatch("upgrade"); }
+  function close() { dispatch("close"); }
 
-  // body scroll lock
-  let prevOverflow = "";
-  $: {
-    if (open) { prevOverflow = document.body.style.overflow || ""; document.body.style.overflow = "hidden"; }
-    else      { document.body.style.overflow = prevOverflow; }
+  // -------- Body scroll lock
+// -------- Body scroll lock (robustno: snimi jednom, vrati jednom)
+// -------- Body scroll lock preko globalnog brojača
+$: open ? lockScroll() : unlockScroll();
+onDestroy(() => unlockScroll());
+
+
+  /* ---------- Checkout adapter (dinamički) ---------- */
+  // Pokuša importati "@/lib/payments". Ako nema, fallback simulira success.
+  let doCheckout: (plan: Plan) => Promise<void> = async (plan) => {
+    console.debug("[paywall] fallback checkout", plan);
+    await new Promise((r) => setTimeout(r, 450));
+    window.dispatchEvent(new CustomEvent("checkout:success", { detail: { plan } }));
+  };
+
+  (async () => {
+    try {
+      // lazy import da ne ruši build ako fajl još ne postoji
+      const mod = await import("@/lib/payments");
+      if (mod?.startCheckout) {
+        doCheckout = async (plan: Plan) => {
+          console.debug("[paywall] startCheckout", plan);
+          await mod.startCheckout({ plan });
+        };
+      }
+    } catch {
+      // ostaje fallback
+    }
+  })();
+
+  function buy(plan: Plan) {
+  console.debug("[paywall] click", plan);   // <— privremeno
+  doCheckout(plan).catch((e) => {
+    console.debug("[paywall] checkout_error", e);
+    });
   }
 
-  /* ---------- Fokus trap (FIX) ---------- */
+  function onSuccess() {
+    upgradeToPro();
+    dispatch("upgrade");
+    close();
+  }
+  window.addEventListener("checkout:success", onSuccess as EventListener);
+  onDestroy(() => window.removeEventListener("checkout:success", onSuccess as EventListener));
+
+  /* ---------- Fokus trap ---------- */
   let modalEl: HTMLDivElement | null = null;
   let focusables: HTMLElement[] = [];
   let firstFocusable: HTMLElement | null = null;
@@ -24,23 +66,18 @@
 
   function setFocusables() {
     if (!modalEl) {
-      focusables = [];
-      firstFocusable = lastFocusable = null;
-      return;
+      focusables = []; firstFocusable = lastFocusable = null; return;
     }
     const nodes = modalEl.querySelectorAll<HTMLElement>(
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
     );
-    // zadrži samo vidljive i u layoutu
     focusables = Array.from(nodes).filter((el) => {
-      const cs = getComputedStyle(el);
-      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el); const r = el.getBoundingClientRect();
       return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
     });
     firstFocusable = focusables[0] ?? null;
     lastFocusable  = focusables[focusables.length - 1] ?? null;
   }
-
   function onKeydown(e: KeyboardEvent) {
     if (!open) return;
     if (e.key === "Escape") { e.preventDefault(); close(); return; }
@@ -51,48 +88,49 @@
       const outside = active ? !modalEl?.contains(active) : true;
 
       if (backwards && (outside || active === firstFocusable)) {
-        e.preventDefault();
-        lastFocusable?.focus();
+        e.preventDefault(); lastFocusable?.focus();
       } else if (!backwards && (outside || active === lastFocusable)) {
-        e.preventDefault();
-        firstFocusable?.focus();
+        e.preventDefault(); firstFocusable?.focus();
       }
     }
   }
 
-  // Dinamičko kačenje keydowna na window dok je modal otvoren
   let _keysBound = false;
   function bindWindowKeys(yes: boolean) {
     if (yes && !_keysBound) { window.addEventListener("keydown", onKeydown); _keysBound = true; }
     if (!yes && _keysBound) { window.removeEventListener("keydown", onKeydown); _keysBound = false; }
   }
   $: bindWindowKeys(open);
-  onDestroy(() => bindWindowKeys(false));
 
-// Fokus samo na “open -> true” (jednokratno na otvaranju)
-let wasOpen = false;
-$: {
-  if (open && !wasOpen) {
-    wasOpen = true;
-    setTimeout(() => { setFocusables(); firstFocusable?.focus(); }, 0);
-  } else if (!open && wasOpen) {
-    wasOpen = false;
+  // Focus kad se otvori
+  let wasOpen = false;
+  $: {
+    if (open && !wasOpen) {
+      wasOpen = true;
+      setTimeout(() => { setFocusables(); firstFocusable?.focus(); }, 0);
+    } else if (!open && wasOpen) {
+      wasOpen = false;
+    }
   }
-}
-
 </script>
 
 {#if open}
   <div class="overlay">
     <button class="backdrop" type="button" aria-label="Zatvori" on:click={close}></button>
 
-    <div class="modal enter" bind:this={modalEl} role="dialog" aria-modal="true" aria-label="KegelPilot PRO">
+    <div class="modal enter" bind:this={modalEl} role="dialog" aria-modal="true" aria-labelledby="paywall-title">
       <div class="head">
-        <h3>Otkrij KegelPilot <span class="accent">PRO</span></h3>
+        <h3 id="paywall-title">Otkrij KegelPilot <span class="accent">PRO</span></h3>
         <button class="x" type="button" on:click={close} aria-label="Zatvori">✕</button>
       </div>
 
       <div class="body">
+        {#if PROVIDER === "mock"}
+  <div class="demo-badge" aria-label="Demo checkout aktivan">
+    Demo checkout (simulacija)
+  </div>
+{/if}
+
         <p>Sve što ti treba za napredak bez zastoja:</p>
         <ul>
           <li>Svi rangovi i programi (bez limita)</li>
@@ -106,8 +144,11 @@ $: {
       </div>
 
       <div class="foot">
-        <button class="btn-ghost"   type="button" on:click={close}>Kasnije</button>
-        <button class="btn-primary" type="button" on:click={upgrade}>Postani PRO</button>
+        <button class="btn-ghost"   type="button" on:click={close} data-autofocus>Kasnije</button>
+        <div class="buy">
+          <button class="btn-outline" type="button" on:click={() => buy("monthly")} aria-label="Kupi mjesečni plan">Mjesečno</button>
+          <button class="btn-primary" type="button" on:click={() => buy("annual")}  aria-label="Kupi godišnji plan">Godišnje</button>
+        </div>
       </div>
     </div>
   </div>
@@ -145,10 +186,13 @@ $: {
 
   .body{ display:grid; gap:10px; padding:6px 2px 2px; }
   .body p{ margin:0; opacity:.95; }
+ 
   ul{ margin:0 0 4px 18px; padding:0; display:grid; gap:6px; }
   li{ opacity:.98; }
 
-  .foot{ display:flex; justify-content:flex-end; gap:10px; padding-top:12px; }
+  .foot{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding-top:12px; flex-wrap:wrap; }
+  .buy{ display:flex; gap:8px; }
+
   .btn-ghost{
     background:none; border:1px solid rgba(255,255,255,.18); color:#e6ebef;
     border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer;
@@ -157,4 +201,17 @@ $: {
     background:#0be2a0; color:#0f1115; border:none; border-radius:12px; padding:10px 14px;
     font-weight:800; cursor:pointer; box-shadow:0 10px 24px rgba(11,226,160,.18);
   }
+  .btn-outline{
+    background:transparent; color:#e6ebef; border:1px solid rgba(255,255,255,.30);
+    border-radius:12px; padding:10px 14px; font-weight:800; cursor:pointer;
+  }
+  .demo-badge{
+  align-self:start;
+  font-size:.8rem; font-weight:800; letter-spacing:.02em;
+  color:#FFA657;
+  background:rgba(255,166,87,.14);
+  border:1px solid rgba(255,166,87,.35);
+  border-radius:999px; padding:4px 8px; margin-bottom:6px;
+}
+
 </style>

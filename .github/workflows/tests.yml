@@ -1,0 +1,32 @@
+name: tests
+
+on: [push, pull_request]
+
+jobs:
+  unit-e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps (clean)
+        run: npm ci
+
+      # Vitest (unit)
+      - name: Run unit tests
+        run: npm run test:run
+
+      # Playwright (e2e, mock provider)
+      - name: Install Playwright
+        run: npx playwright install --with-deps
+
+      - name: Run e2e tests (mock)
+        env:
+          VITE_PAYMENTS_PROVIDER: mock
+        run: npm run e2e

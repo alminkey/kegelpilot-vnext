@@ -2,8 +2,17 @@
   import { today, goal } from '@/store/kpStore';
   import { go } from '@/store/router';
   import { onMount } from 'svelte';
-  import ReminderCard from '@/components/ReminderCard.svelte';
   import { localDateKey } from "@/store/date";
+  
+  /* REMINDERS */
+  import ReminderEditorModal from "@/components/ReminderEditorModal.svelte";
+  import { reminders, addValidated } from "@/store/reminders";
+  import type { Reminder } from "@/store/reminders";
+  import type { EditorData } from "@/components/reminder-types";
+
+  /* PRO gate za Edu */
+  import { isPro } from "@/store/user";
+  import { isAllowed, openPaywall } from "@/lib/gate";
 
   $: dailyDone   = $today.done;
   $: dailyTarget = $today.target;
@@ -40,32 +49,110 @@
     history[key]=s; saveHistory();
   }
   function last7(){
-  const out: {date:string;status:DayStatus}[]=[];
-  const now=new Date();
-  for(let i=6;i>=0;i--){
-    const d=new Date(now); d.setDate(now.getDate()-i);
-    const k=localDateKey(d);
-    out.push({date:k,status:history[k]??0});
+    const out: {date:string;status:DayStatus}[]=[];
+    const now=new Date();
+    for(let i=6;i>=0;i--){
+      const d=new Date(now); d.setDate(now.getDate()-i);
+      const k=localDateKey(d);
+      out.push({date:k,status:history[k]??0});
+    }
+    return out;
   }
-  return out;
-}
-
   $: week = last7();
 
   onMount(()=>{
     loadHistory(); updateTodayFromStore();
     const h = ()=>{ loadHistory(); updateTodayFromStore(); week = last7(); };
     document.addEventListener('progress-updated', h);
-    document.addEventListener('day-rollover', h); // ← NOVO: prelazak dana
-    document.addEventListener('tz-changed', h);   // ← NOVO: promjena vremenske zone/DST
-    return ()=>document.removeEventListener('progress-updated', h);
-    document.removeEventListener('day-rollover', h);
-    document.removeEventListener('tz-changed', h);
+    document.addEventListener('day-rollover', h);
+    document.addEventListener('tz-changed', h);
+    return ()=>{
+      document.removeEventListener('progress-updated', h);
+      document.removeEventListener('day-rollover', h);
+      document.removeEventListener('tz-changed', h);
+    };
   });
 
   const labelFor = (d:string)=>['Ned','Pon','Uto','Sri','Čet','Pet','Sub'][new Date(d).getDay()];
 
-  // EDU
+  /* ---------- Reminders UI helpers ---------- */
+  const FULL_WEEK = [0,1,2,3,4,5,6];
+
+  function daysLabel(days?: number[]) {
+    const d = (days && days.length ? [...days].sort() : FULL_WEEK);
+    const all = FULL_WEEK, work = [1,2,3,4,5], weekend = [0,6];
+    const eq = (a:number[], b:number[]) => a.length===b.length && a.every(x=>b.includes(x));
+    if (eq(d, all)) return "Svaki dan";
+    if (eq(d, work)) return "Radni dani";
+    if (eq(d, weekend)) return "Vikend";
+    const names = ["Ned","Pon","Uto","Sri","Čet","Pet","Sub"];
+    return d.map(i => names[i]).join(", ");
+  }
+  const timeStr = (h:number,m:number)=>`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+
+  /* ---------- Editor modal state + handlers ---------- */
+  let editorOpen = false;
+  let editorMode: "create" | "edit" = "create";
+  let editorData: EditorData = {
+    label: "Vrijeme za vježbu",
+    hour: 19,
+    minute: 0,
+    enabled: true,
+    daysOfWeek: [1,3,5]
+  };
+
+  function handleAdd() {
+    editorMode = "create";
+    editorData = {
+      label: "Vrijeme za vježbu",
+      hour: new Date().getHours(),
+      minute: Math.min(59, new Date().getMinutes()+1),
+      enabled: true,
+      daysOfWeek: [1,3,5]
+    };
+    editorOpen = true;
+  }
+
+  function handleEdit(r: Reminder) {
+    editorMode = "edit";
+    editorData = {
+      id: r.id,
+      label: r.label,
+      hour: r.hour,
+      minute: r.minute,
+      enabled: r.enabled,
+      daysOfWeek: r.daysOfWeek?.length ? r.daysOfWeek : FULL_WEEK,
+    };
+    editorOpen = true;
+  }
+
+  function handleSave(e: CustomEvent<EditorData & { daysOfWeek: number[] }>) {
+    const d = e.detail;
+    if (editorMode === "create") {
+      const res = addValidated({
+        label: d.label,
+        hour: d.hour,
+        minute: d.minute,
+        daysOfWeek: d.daysOfWeek?.length ? d.daysOfWeek : FULL_WEEK,
+        enabled: d.enabled,
+      });
+      if (!res.ok) {
+        openPaywall("reminders.multi", { source: "home_add" });
+    return;
+      }
+    } else {
+      reminders.updateOne(d.id!, {
+        label: d.label,
+        hour: d.hour,
+        minute: d.minute,
+        enabled: d.enabled,
+        daysOfWeek: d.daysOfWeek?.length ? d.daysOfWeek : FULL_WEEK,
+      });
+    }
+    editorOpen = false;
+  }
+
+  /* ---------- Edu PRO gate ---------- */
   type EduItem = { id:string; title:string; desc:string; duration:string; emoji:string; pro?:boolean };
   const eduItems:EduItem[] = [
     { id:'breath',   title:'Disanje 101',     desc:'Ritam i dijafragma',   duration:'2 min', emoji:'🌬️' },
@@ -75,7 +162,15 @@
     { id:'recovery', title:'Recovery',        desc:'Opusti i resetuj',     duration:'3 min', emoji:'🛌', pro:true },
     { id:'mistakes', title:'Česte greške',    desc:'Šta izbjegavati',      duration:'1 min', emoji:'⚠️'  },
   ];
-  const openEdu = (_:EduItem)=> go('edu');
+
+  function openEdu(it: EduItem){
+    // PRO-only lekcije su “edu.advanced”
+    if (it.pro && !isAllowed("edu.advanced")) {
+      openPaywall("edu.advanced", { from: "home_edu_card", id: it.id });
+      return;
+    }
+    go('edu');
+  }
 </script>
 
 <section class="home">
@@ -138,7 +233,14 @@
     </div>
     <div class="lane" aria-label="Edu lekcije">
       {#each eduItems as it}
-        <button class="edu-card" on:click={() => openEdu(it)} aria-label={it.title} title={it.title}>
+        <button
+          class="edu-card"
+          class:pro={it.pro}
+          class:need-pro={it.pro && !$isPro}
+          on:click={() => openEdu(it)}
+          aria-label={it.title}
+          title={it.title}
+        >
           <div class="badge" class:pro={it.pro}>{it.pro ? 'PRO' : 'FREE'}</div>
           <div class="edu-emoji">{it.emoji}</div>
           <div class="edu-title">{it.title}</div>
@@ -164,8 +266,47 @@
     </div>
   </div>
 
-  <!-- PODSJETNIK (novi) -->
-  <ReminderCard />
+  <!-- PODSJETNIK -->
+  <div class="card remind">
+    <div class="row-top">
+      <div class="title">Podsjetnik</div>
+      <button class="btn-primary" on:click={handleAdd}>Dodaj još</button>
+    </div>
+
+    {#if $reminders.length === 0}
+      <div class="empty">Nema podsjetnika. Dodaj prvi.</div>
+    {:else}
+      <div class="rem-list">
+        {#each $reminders as r (r.id)}
+          <div class="rem-row">
+            <div class="time">{timeStr(r.hour, r.minute)}</div>
+            <div class="meta">
+              <div class="r-title">{r.label}</div>
+              <div class="r-sub">{daysLabel(r.daysOfWeek)}</div>
+            </div>
+
+            <!-- a11y switch -->
+            <label class="switch" title={r.enabled ? "Isključi" : "Uključi"}>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-checked={r.enabled}
+                checked={r.enabled}
+                on:change={() => reminders.toggle(r.id)}
+                aria-label="Uključi/isključi podsjetnik"
+              />
+              <span aria-hidden="true"></span>
+            </label>
+
+            <div class="actions">
+              <button class="r-btn" on:click={() => handleEdit(r)}>Uredi</button>
+              <button class="r-btn danger" on:click={() => reminders.remove(r.id)}>Ukloni</button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
 
   <!-- PRO (button – rješava a11y) -->
   <button type="button" class="card pro" on:click={openPro} aria-label="Otvori KegelPilot PRO">
@@ -180,6 +321,15 @@
     </div>
     <span class="pro-cta">Probaj 7 dana</span>
   </button>
+
+  <!-- EDITOR MODAL -->
+  <ReminderEditorModal
+    bind:open={editorOpen}
+    mode={editorMode}
+    data={editorData}
+    on:save={handleSave}
+    on:close={() => (editorOpen = false)}
+  />
 </section>
 
 <style>
@@ -241,7 +391,7 @@
   .mini-fill{ height:100%; width:var(--p); background:linear-gradient(90deg,#0be2a0,#30ffcc); border-radius:999px; transition:width .3s ease; }
   .mini-meta{ display:flex; justify-content:space-between; margin-top:6px; font-size:.9rem; }
 
-  .hint{ border:1px solid rgba(255,166,87,.25); background:linear-gradient(180deg, rgba(255,166,87,.16), rgba(255,166,87,.06)); }
+  .hint{ border:1px solid rgba(255,166,87,.25); background:linear-gradient(180deg, rgba(255,166,87,.16), rgba(255,255,255,.06)); }
   .hint-title{ font-weight:800; margin-bottom:6px; color:#FFA657; }
   .hint-text{ opacity:.98; }
 
@@ -262,7 +412,7 @@
   .q-emoji{ font-size:1.6rem; line-height:1; }
   .q-t{ font-weight:800; }
 
-  /* EDU lane – ne širi stranicu, horizontalni scroll */
+  /* EDU lane */
   .edu{ padding:16px; }
   .edu .row-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
   .edu .see{ background:none; border:1px solid rgba(255,255,255,.18); color:#e6ebef; border-radius:10px; padding:6px 10px; font-weight:700; cursor:pointer; }
@@ -292,6 +442,8 @@
   .edu-title{ font-weight:800; line-height:1.1; }
   .edu-desc{ font-size:.9rem; opacity:.9; min-height:30px; }
   .edu-meta{ font-size:.85rem; opacity:.85; }
+  .edu-card.need-pro { outline: 1px dashed rgba(255,166,87,.45); }
+  .edu-card.need-pro:hover { outline-color: rgba(255,166,87,.8); }
 
   .streak{ padding:16px; }
   .streak .row-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
@@ -301,6 +453,60 @@
   .dot.half{ background: radial-gradient(closest-side, rgba(255,255,255,.18), rgba(255,255,255,.06)); }
   .dot.full{ background:#0be2a0; border-color:rgba(11,226,160,.6); box-shadow:0 0 0 3px rgba(11,226,160,.16); color:#0f1115; font-weight:800; }
   .dot .lbl{ position:absolute; bottom:-18px; font-size:.78rem; opacity:.85; }
+
+  /* Reminders */
+  .remind { padding:16px; }
+  .remind .row-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .btn-primary{
+    background:#0be2a0; color:#0f1115; border:none; border-radius:12px; padding:10px 14px;
+    font-weight:800; cursor:pointer; box-shadow:0 10px 24px rgba(11,226,160,.18);
+  }
+
+  .empty{ opacity:.85; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.10); border-radius:12px; padding:10px; }
+
+  .rem-list{ display:grid; gap:10px; }
+  .rem-row{
+    display:grid; grid-template-columns: auto 1fr auto auto; align-items:center; gap:12px;
+    padding:10px; border-radius:12px;
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.10);
+  }
+  @media (max-width:420px){
+    .rem-row{
+      grid-template-columns: auto 1fr; 
+      grid-template-areas:
+        "time time"
+        "meta meta"
+        "switch actions";
+      row-gap:8px;
+    }
+    .time{ grid-area: time; }
+    .meta{ grid-area: meta; }
+    .switch{ grid-area: switch; justify-self: start; }
+    .actions{ grid-area: actions; justify-self: end; }
+  }
+
+  .time{
+    font-weight:800; letter-spacing:.02em;
+    color:#FFA657;
+    background:rgba(255,166,87,.12); border:1px solid rgba(255,166,87,.45);
+    border-radius:10px; padding:8px 10px;
+  }
+  .meta{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .r-title{ font-weight:800; font-size:.95rem; line-height:1.1; }
+  .r-sub{ font-size:.85rem; opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .switch{ display:flex; align-items:center; }
+  .switch input{ appearance:none; width:46px; height:26px; border-radius:999px; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.22); position:relative; cursor:pointer; }
+  .switch input::after{ content:""; position:absolute; width:20px; height:20px; top:2.5px; left:3px; border-radius:50%; background:#fff; transition: transform .18s ease; }
+  .switch input:checked{ background:rgba(11,226,160,.4); border-color:rgba(11,226,160,.6); }
+  .switch input:checked::after{ transform: translateX(20px); }
+
+  .actions{ display:flex; gap:8px; }
+  .r-btn{
+    background:none; border:1px solid rgba(255,255,255,.18); color:#e6ebef;
+    border-radius:10px; padding:6px 10px; font-weight:700; cursor:pointer;
+  }
+  .r-btn.danger{ border-color: rgba(255,107,107,.45); color:#ff6b6b; }
 
   .pro{
     display:flex; align-items:center; justify-content:space-between; gap:10px;

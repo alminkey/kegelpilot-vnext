@@ -1,93 +1,117 @@
 <script lang="ts">
-  import { go } from "@/store/router";
-  import { isPro, upgradeToPro, downgradeToFree, togglePro } from "@/store/user";
+  import { onMount } from "svelte";
+  import { isPro, upgradeToPro, downgradeToFree } from "@/store/user";
+  import { startCheckout } from "@/lib/payments";
 
-  const makePro  = () => { upgradeToPro();  go("home"); };
-  const makeFree = () => { downgradeToFree(); go("home"); };
-  const quickToggle = () => { togglePro(); go("home"); };
+  // helper za hash-rutu: #/pro?success=1
+  function hashQuery(): URLSearchParams {
+    const h = location.hash || "";
+    const i = h.indexOf("?");
+    return new URLSearchParams(i >= 0 ? h.slice(i + 1) : "");
+  }
+  function clearHashQuery() {
+    const base = location.origin + location.pathname + location.search + "#/pro";
+    history.replaceState(null, "", base);
+  }
+
+  onMount(() => {
+    // 1) Mock/Stripe success preko eventa
+    const onSuccess = () => upgradeToPro();
+    window.addEventListener("checkout:success", onSuccess as any);
+
+    // 2) Ako smo došli sa #/pro?success=1 (Stripe redirect), promoviši i očisti URL
+    const q = hashQuery();
+    if (q.get("success") === "1") {
+      upgradeToPro();
+      clearHashQuery();
+    }
+
+    return () => window.removeEventListener("checkout:success", onSuccess as any);
+  });
+
+  async function buy(plan: "monthly" | "annual") {
+    try {
+      await startCheckout({ plan });
+    } catch (e) {
+      console.warn("[pro] checkout error", e);
+    }
+  }
 </script>
 
-<section class="pro-page">
-  <div class="card hero">
-    <h1>KegelPilot PRO</h1>
-    <p>Napredak bez zastoja — sve što ti treba u jednoj verziji.</p>
-    <div class="status">
-      Status:
-      <span class="pill" class:ok={$isPro}>{$isPro ? "PRO aktivno" : "FREE"}</span>
-    </div>
+<section class="pro-wrap">
+  <div class="card head">
+    <h2>KegelPilot <span class="accent">PRO</span></h2>
+    {#if $isPro}
+      <div class="status on">PRO aktivno</div>
+    {:else}
+      <div class="status off">FREE</div>
+    {/if}
   </div>
 
-  <div class="card">
-    <h2>Šta dobijaš</h2>
-    <ul>
-      <li>Svi rangovi i programi (bez limita)</li>
-      <li>Adaptivni plan (auto-prilagodba po feedbacku)</li>
-      <li>Napredna analitika (sedmični/mjesečni izvještaji, heatmap)</li>
-      <li>Više i pametni podsjetnici</li>
-      <li>Specifični planovi (post-partum, nakon prostatektomije…)</li>
-      <li>Audio/voice/haptics u pozadini</li>
-      <li>Integracije (Health/Fit) + export + prioritetni support</li>
-    </ul>
-
-    <div class="actions">
-      <button class="btn-ghost" on:click={() => go("home")}>Kasnije</button>
-      {#if $isPro}
-        <button class="btn-warning" on:click={makeFree}>Vrati na FREE</button>
-      {:else}
-        <button class="btn-primary" on:click={makePro}>Postani PRO</button>
-      {/if}
+  {#if !$isPro}
+    <div class="card plans">
+      <div class="plan">
+        <div class="p-title">Mjesečno</div>
+        <div class="p-price">9,99 €</div>
+        <button class="btn-primary" on:click={() => buy("monthly")}>Kupi mjesečni plan</button>
+      </div>
+      <div class="plan">
+        <div class="p-title">Godišnje</div>
+        <div class="p-price">79,99 €</div>
+        <button class="btn-primary" on:click={() => buy("annual")}>Kupi godišnji plan</button>
+      </div>
     </div>
-  </div>
 
-  <!-- Dev pomoć: brzo testiranje Free/Pro -->
-  <div class="card dev">
-    <div class="dev-row">
-      <div class="dev-title">Dev test</div>
-      <button class="btn-ghost" on:click={quickToggle}>Toggle PRO</button>
+    <div class="card perks">
+      <h3>Šta dobijaš</h3>
+      <ul>
+        <li>Više podsjetnika + pametni nudge</li>
+        <li>Svi rangovi i programi</li>
+        <li>Adaptivni plan</li>
+        <li>Izvještaji (sedmični/mjesečni)</li>
+      </ul>
     </div>
-  </div>
+  {:else}
+    <div class="card active">
+      <h3>Hvala! PRO je aktivan 🎉</h3>
+      <p>Možeš koristiti sve PRO funkcije. Ako želiš, možeš se vratiti na FREE.</p>
+      <button class="btn-ghost" on:click={downgradeToFree}>Vrati na FREE</button>
+    </div>
+  {/if}
 </section>
 
 <style>
-  .pro-page{
-    padding:16px; display:grid; gap:16px; max-width:680px; margin:0 auto;
-  }
+  .pro-wrap{ padding:16px; display:grid; gap:16px; max-width:680px; margin:0 auto; }
   .card{
-    position:relative; width:100%;
-    border-radius:16px; border:1px solid rgba(255,255,255,.08);
-    background:
-      radial-gradient(1200px 500px at -20% -20%, rgba(11,226,160,.06), transparent 40%),
-      radial-gradient(800px 600px at 120% 120%, rgba(255,255,255,.04), transparent 45%),
-      #0f1115;
-    box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 20px 40px rgba(0,0,0,.35);
-    padding:16px; color:#e6ebef;
+    border-radius:16px; padding:14px;
+    background: radial-gradient(1200px 500px at -20% -20%, rgba(11,226,160,.06), transparent 40%),
+                radial-gradient(800px 600px at 120% 120%, rgba(255,255,255,.04), transparent 45%),
+                #0f1115;
+    border:1px solid rgba(255,255,255,.10);
+    color:#e6ebef;
   }
-  .hero h1{ font-size:1.6rem; font-weight:900; letter-spacing:.02em; margin:0 0 6px; }
-  .status{ margin-top:6px; font-size:.95rem; opacity:.95; display:flex; gap:8px; align-items:center; }
-  .pill{
-    font-weight:800; padding:4px 8px; border-radius:999px;
-    border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08);
-  }
-  .pill.ok{ color:#0be2a0; border-color:rgba(11,226,160,.35); background:rgba(11,226,160,.12); }
+  .head{ display:flex; align-items:center; justify-content:space-between; }
+  h2{ margin:0; font-size:1.2rem; font-weight:900; letter-spacing:.02em; }
+  .accent{ color:#0be2a0; }
+  .status{ font-weight:800; padding:6px 10px; border-radius:999px; }
+  .status.on{ background:rgba(11,226,160,.18); border:1px solid rgba(11,226,160,.45); color:#0be2a0; }
+  .status.off{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); opacity:.95; }
 
-  h2{ font-weight:800; margin:0 0 8px; }
-  ul{ margin:0 0 12px 18px; padding:0; display:grid; gap:6px; }
+  .plans{ display:grid; gap:12px; grid-template-columns: 1fr 1fr; }
+  @media (max-width:560px){ .plans{ grid-template-columns: 1fr; } }
+  .plan{ display:grid; gap:8px; align-content:start; }
+  .p-title{ font-weight:800; }
+  .p-price{ font-size:1.1rem; font-weight:900; }
 
-  .actions{ display:flex; gap:10px; justify-content:flex-end; }
-  .btn-ghost{
-    background:none; border:1px solid rgba(255,255,255,.18); color:#e6ebef;
-    border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer;
-  }
   .btn-primary{
     background:#0be2a0; color:#0f1115; border:none; border-radius:12px; padding:10px 14px;
     font-weight:800; cursor:pointer; box-shadow:0 10px 24px rgba(11,226,160,.18);
   }
-  .btn-warning{
-    background:#FFA657; color:#0f1115; border:none; border-radius:12px; padding:10px 14px;
-    font-weight:800; cursor:pointer; box-shadow:0 10px 24px rgba(255,166,87,.18);
+  .btn-ghost{
+    background:none; border:1px solid rgba(255,255,255,.18); color:#e6ebef;
+    border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer;
   }
 
-  .dev{ padding:12px; }
-  .dev-row{ display:flex; align-items:center; justify-content:space-between; }
-  .dev-title{ font-weight:800; letter-spacing:.02em; opacity:.9; }
+  .perks h3, .active h3{ margin:0 0 6px 0; font-weight:900; }
+  .perks ul{ margin:0 0 0 18px; padding:0; display:grid; gap:6px; }
 </style>

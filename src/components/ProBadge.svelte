@@ -1,46 +1,36 @@
 <script lang="ts">
-  import { go, type Tab } from "@/store/router";
-  import { isPro } from "@/store/user";
-  export let small = false;
+  export let active = false; // true = PRO aktivno, false = FREE
 
-  const openPro = () => go("pro" as Tab); // i FREE bedž vodi na PRO stranicu
+  // Samo zaustavimo bubbling; navigaciju radi anchor sam (href="#/pro").
+  function stop(e: MouseEvent) {
+    e.stopPropagation();
+    // ne radimo preventDefault – pustimo anchor da promijeni hash
+  }
 </script>
 
-<button
-  type="button"
-  class="badge"
-  class:small={small}
-  class:pro={$isPro}
-  class:free={!$isPro}
-  title={$isPro ? "PRO aktivno — tap za detalje" : "FREE — tap za PRO opcije"}
-  on:click={openPro}
+<a
+  href="#/pro"
+  class="pro-badge"
+  class:active={active}
+  on:click={stop}
+  aria-label="Otvori KegelPilot PRO"
+  title="KegelPilot PRO"
 >
-  {$isPro ? "PRO aktivno" : "FREE"}
-</button>
+  {#if active} PRO aktivno {:else} FREE {/if}
+</a>
 
 <style>
-  .badge{
-    all: unset;
-    display:inline-flex; align-items:center;
-    border-radius:999px; padding:4px 10px;
-    font-weight:800; cursor:pointer;
-    border:1px solid transparent;
-  }
-  .badge.small{ font-size:.8rem; padding:3px 8px; }
-
-  /* PRO (zeleno) */
-  .badge.pro{
+  .pro-badge{
+    display:inline-block;
+    font-weight:800; font-size:.85rem; letter-spacing:.02em;
+    background:rgba(11,226,160,.14);
+    border:1px solid rgba(11,226,160,.35);
     color:#0be2a0;
-    background:rgba(11,226,160,.12);
-    border-color:rgba(11,226,160,.25);
+    padding:6px 10px; border-radius:999px; cursor:pointer;
+    text-decoration:none; /* anchor bez podcrtavanja */
   }
-
-  /* FREE (crveno) */
-  .badge.free{
-    color:#ff6b6b;
-    background:rgba(255,107,107,.12);
-    border-color:rgba(255,107,107,.28);
+  .pro-badge.active{
+    background:rgba(11,226,160,.20);
+    border-color:rgba(11,226,160,.55);
   }
-
-  .badge:focus-visible{ outline:2px solid currentColor; outline-offset:2px; }
 </style>
