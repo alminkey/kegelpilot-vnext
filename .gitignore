@@ -20,3 +20,11 @@ yarn-error.log*
 Thumbs.db
 .env
 .env.*
+# lokalne varijable
+.env.local
+
+# Playwright/Vitest artefakti
+test-results/
+playwright-report/
+blob-report/
+coverage/
