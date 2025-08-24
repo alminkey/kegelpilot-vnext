@@ -65,7 +65,38 @@
   $: if (!open && wasOpen) { wasOpen = false; }
   $: if (open && data && data !== lastDataRef) { lastDataRef = data; syncFromData(); }
 
-  function toggleDay(i: number) {
+  
+  // — A11y: roving tabindex za dane u sedmici —
+  let focusIndex = 0;
+  let dayBtns: HTMLButtonElement[] = [];
+
+  // Action za hvatanje reference na dugme dana (radi sa Svelte templatom bez TS cast-a)
+  function captureDayBtn(node: HTMLButtonElement, i: number) {
+    dayBtns[i] = node;
+    return {
+      destroy() {
+        // opcionalno čišćenje; nije obavezno
+      }
+    };
+  }
+  function handleDaysKeydown(e: KeyboardEvent) {
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      focusIndex = (focusIndex + 1) % DAYS.length;
+      dayBtns[focusIndex]?.focus();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      focusIndex = (focusIndex - 1 + DAYS.length) % DAYS.length;
+      dayBtns[focusIndex]?.focus();
+    } else if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      // koristimo postojeću toggleDay logiku na indeksu
+      const idx = focusIndex;
+      // ako već postoji mapiranje i->value, koristimo isti indeks kao u {#each DAYS as d, i}
+      toggleDay(DAYS[idx].i ?? idx);
+    }
+  }
+function toggleDay(i: number) {
     daysOfWeek = daysOfWeek.includes(i)
       ? daysOfWeek.filter((d) => d !== i)
       : [...daysOfWeek, i].sort();
@@ -158,17 +189,29 @@
         <!-- Dani u sedmici -->
         <div class="field" role="group" aria-label="Dani u sedmici">
           <div class="lab">Dani u sedmici</div>
-          <div class="days">
-            {#each DAYS as d}
-              <button
-                type="button"
-                class:active={daysOfWeek.includes(d.i)}
-                aria-pressed={daysOfWeek.includes(d.i)}
-                on:click={() => toggleDay(d.i)}>
-                {d.label}
-              </button>
-            {/each}
-          </div>
+          <div
+  class="days"
+  role="toolbar"
+  aria-label="Odaberi dane u sedmici"
+  tabindex="0"
+  on:focus={() => dayBtns[focusIndex]?.focus()}
+  on:keydown={handleDaysKeydown}
+>
+
+  {#each DAYS as d, i}
+    <button
+      type="button"
+      class:active={daysOfWeek.includes(d.i)}
+      aria-pressed={daysOfWeek.includes(d.i)}
+      tabindex={i === focusIndex ? 0 : -1}
+      use:captureDayBtn={i}
+      on:focus={() => (focusIndex = i)}
+      on:click={() => toggleDay(d.i)}
+    >
+      {d.label}
+    </button>
+  {/each}
+</div>
         </div>
 
         <label class="toggle">

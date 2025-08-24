@@ -12,11 +12,8 @@
   import { startDayRolloverWatcher, stopDayRolloverWatcher } from "@/store/date";
   import { initUserPersistence } from "@/store/user";
   import PaywallHost from "@/components/PaywallHost.svelte";
+  import Toast from "@/components/Toast.svelte";
 
-
-  /* Paywall modal (global overlay) */
-  import PaywallModal from "@/components/PaywallModal.svelte";
-  let paywallOpen = false;
 
   onMount(() => {
     initUserPersistence();
@@ -27,12 +24,7 @@
     return () => stopDayRolloverWatcher();
   });
 
-  // Slušaj globalni event pa otvori paywall iz bilo kojeg mjesta (openPaywall)
-  onMount(() => {
-    const open = () => (paywallOpen = true);
-    window.addEventListener("paywall:open", open as EventListener);
-    return () => window.removeEventListener("paywall:open", open as EventListener);
-  });
+    
 </script>
 
 <Header />
@@ -47,15 +39,10 @@
   {:else}                         <Home />
   {/if}
 </main>
-
+<Toast />
 <Tabbar />
 <PaywallHost />
 <!-- Globalno montiran paywall modal -->
-<PaywallModal
-  bind:open={paywallOpen}
-  on:close={() => (paywallOpen = false)}
-  on:upgrade={() => (paywallOpen = false)}
-/>
 
 <style>
   :global(html, body){ margin:0; height:100%; background:#0b0f14; }
@@ -64,4 +51,6 @@
     padding-bottom: calc(84px + env(safe-area-inset-bottom, 0));
     max-width: 680px; width: 100%; margin: 0 auto; overflow-x: clip;
   }
+
+
 </style>

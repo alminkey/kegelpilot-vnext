@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { isPro, upgradeToPro, downgradeToFree } from "@/store/user";
   import { startCheckout } from "@/lib/payments";
+  import { showToast } from "@/store/toast";
 
   // helper za hash-rutu: #/pro?success=1
   function hashQuery(): URLSearchParams {
@@ -16,13 +17,14 @@
 
   onMount(() => {
     // 1) Mock/Stripe success preko eventa
-    const onSuccess = () => upgradeToPro();
+    const onSuccess = () => { upgradeToPro(); try { showToast("PRO aktiviran 🎉"); } catch {} };
     window.addEventListener("checkout:success", onSuccess as any);
 
     // 2) Ako smo došli sa #/pro?success=1 (Stripe redirect), promoviši i očisti URL
     const q = hashQuery();
     if (q.get("success") === "1") {
       upgradeToPro();
+      try { showToast("PRO aktiviran 🎉"); } catch {}
       clearHashQuery();
     }
 
