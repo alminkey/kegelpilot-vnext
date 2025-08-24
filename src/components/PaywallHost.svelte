@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import PaywallModal from "@/components/PaywallModal.svelte";
+  import { showToast } from "@/store/toast";
+  import { upgradeToPro } from "@/store/user";
 
   let open = false;
 
@@ -10,7 +12,7 @@
   onMount(() => {
     const onOpen = () => openIt();
     const onCloseAll = () => closeIt();
-    const onCheckoutSuccess = () => closeIt(); // zatvori nakon kupovine
+    const onCheckoutSuccess = () => { closeIt(); try { upgradeToPro(); showToast("PRO aktiviran 🎉"); } catch {} }; // zatvori nakon kupovine
 
     window.addEventListener("paywall:open", onOpen as any);
     window.addEventListener("kp:open-paywall", onOpen as any);
