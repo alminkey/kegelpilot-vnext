@@ -14,7 +14,10 @@ Android‑first skeleton sa Svelte + Vite + TypeScript + Capacitor. Sadrži poč
 
 ```bash
 npm install
-npm run dev
+npm i
+npm run dev         # lokalno
+npm run dev:lan     # telefon na istoj mreži
+
 # otvori http://localhost:5173
 ```
 
