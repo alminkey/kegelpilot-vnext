@@ -1,96 +1,143 @@
 <script lang="ts">
-  import ProGate from "@/components/ProGate.svelte";
+  import { openPaywall } from "@/lib/gate";
+  import { isPro } from "@/store/user";
   import EduDetailModal from "./EduDetailModal.svelte";
-  import { lessons, type EduLesson } from "./eduData";
+  import { lessons as rawLessons, type EduLesson } from "./eduData";
 
-  // modal state
+  type Lesson = EduLesson;
+
+  const lessons: Lesson[] = rawLessons;
+
   let open = false;
-  let lesson: EduLesson | null = null;
+  let lesson:
+    | Partial<{
+        title: string;
+        desc: string;
+        emoji: string;
+        durationMin: number | string;
+        content: string[];
+      }>
+    | null = null;
 
-  function openLesson(l: EduLesson) {
-    lesson = l;
+  // Helpers
+  const titleOf = (l: Lesson) => l.title;
+  const emojiOf = (l: Lesson) => l.emoji;
+
+  // Ako nema desc, uzmi prvi paragraf iz content
+  const descOf = (l: Lesson) =>
+    (l.desc && l.desc.trim()) || (Array.isArray(l.content) && l.content[0]) || "";
+
+  // "2 min" -> "2"
+  function minsStr(l: Lesson): string {
+    const n = parseInt(l.duration, 10);
+    return Number.isFinite(n) ? String(n) : String(l.duration).replace(/\D+$/, "");
+  }
+  function minsNum(l: Lesson): number {
+    const n = parseInt(minsStr(l), 10);
+    return Number.isFinite(n) ? n : 2;
+  }
+
+  const isProItem = (l: Lesson) => l.pro === true;
+
+  // Klik na karticu:
+  //  - ako je PRO + FREE korisnik → paywall
+  //  - inače → modal sa punim sadržajem (desc + content[])
+  function onCardClick(l: Lesson) {
+    if (isProItem(l) && !$isPro) {
+      openPaywall("edu.advanced", { source: "edu_card" });
+      return;
+    }
+    lesson = {
+      title: titleOf(l),
+      desc: descOf(l),
+      emoji: emojiOf(l),
+      durationMin: minsNum(l),
+      content: Array.isArray(l.content) ? l.content : []
+    };
     open = true;
   }
 </script>
 
 <section class="edu">
-  <div class="row-top">
-    <div class="title">Edukacija</div>
-  </div>
+  <h2 class="h">Edukacija</h2>
 
-  <div class="lane" aria-label="Edu lekcije">
-    {#each lessons as it (it.id)}
-      {#if it.pro}
-        <ProGate feature="edu.advanced" teaser="Napredna lekcija" mode="blur" origin="edu">
-          <button
-            type="button"
-            class="edu-card"
-            on:click={() => openLesson(it)}
-            aria-label={it.title}
-            title={it.title}
-          >
-            <div class="badge pro">PRO</div>
-            <div class="edu-emoji">{it.emoji}</div>
-            <div class="edu-title">{it.title}</div>
-            <div class="edu-desc">{it.desc}</div>
-            <div class="edu-meta">{it.duration}</div>
-          </button>
-        </ProGate>
-      {:else}
-        <button
-          type="button"
-          class="edu-card"
-          on:click={() => openLesson(it)}
-          aria-label={it.title}
-          title={it.title}
-        >
-          <div class="badge free">FREE</div>
-          <div class="edu-emoji">{it.emoji}</div>
-          <div class="edu-title">{it.title}</div>
-          <div class="edu-desc">{it.desc}</div>
-          <div class="edu-meta">{it.duration}</div>
-        </button>
-      {/if}
+  <div class="list">
+    {#each lessons as it}
+      <button
+        type="button"
+        class="card"
+        on:click={() => onCardClick(it)}
+        aria-label={titleOf(it)}
+        title={titleOf(it)}
+      >
+        <!-- FREE/PRO bedž -->
+        {#if isProItem(it)}
+          <span class="badge pro">PRO</span>
+        {:else}
+          <span class="badge free">FREE</span>
+        {/if}
+
+        <div class="row">
+          <span class="edu-emoji" aria-hidden="true">{emojiOf(it)}</span>
+          <div class="txt">
+            <div class="edu-title">{titleOf(it)}</div>
+
+            {#if descOf(it)}
+              <div class="edu-desc">{descOf(it)}</div>
+            {/if}
+
+            <div class="edu-meta">{minsStr(it)} min</div>
+          </div>
+        </div>
+      </button>
     {/each}
   </div>
 
-  <!-- Modal detalja lekcije -->
-  <EduDetailModal bind:open {lesson} on:close={() => (lesson = null)} />
+  <EduDetailModal bind:open {lesson} />
 </section>
 
 <style>
-  .edu{ padding:16px; display:grid; gap:10px; }
-  .row-top{ display:flex; align-items:center; justify-content:space-between; }
-  .row-top .title{ font-weight:800; letter-spacing:.02em; }
+  .edu{ padding: 12px 16px 24px; color:#e6ebef; }
+  .h{ margin: 0 0 12px 0; font-size:1.3rem; font-weight: 800; }
 
-  .lane{
-    width:100%; max-width:100%;
-    display:grid; grid-auto-flow:column; grid-auto-columns:180px;
-    gap:12px; padding:2px 2px 8px;
-    overflow-x:auto; overflow-y:hidden;
-    scroll-snap-type:x mandatory;
-    -webkit-overflow-scrolling:touch;
+  .list{
+    display: grid;
+    grid-template-columns: 1fr; /* jedna kolona */
+    gap: 12px;
   }
-  .lane::-webkit-scrollbar{ height:6px; }
-  .lane::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.15); border-radius:8px; }
 
-  /* Card */
-  .edu-card{
-    position:relative; width:180px; min-width:180px;
-    scroll-snap-align:start;
-    border-radius:14px; padding:12px;
-    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  .card{
+    position: relative;
+    width: 100%;
+    border-radius: 16px;
     border:1px solid rgba(255,255,255,.12);
-    display:grid; gap:6px; text-align:left; color:#e6ebef; cursor:pointer;
+    background: #0e1319;
+    display: block;
+    text-align: left;
+    color:#e6ebef;
+    padding: 12px;
+    cursor: pointer;
   }
+  .row{ display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: center; }
+  .edu-emoji{ font-size: 1.6rem; text-align:center; }
+
+  .txt{ display: grid; gap: 6px; }
+  .edu-title{ font-weight:800; line-height:1.2; }
+
+  /* više linija opisa; bez ellipsisa */
+  .edu-desc{
+    font-size:.95rem;
+    opacity:.9;
+    white-space: normal;
+    overflow: visible;
+    line-height: 1.35;
+  }
+  .edu-meta{ font-size:.85rem; opacity:.85; }
+
   .badge{
     position:absolute; top:8px; right:8px; font-size:.72rem; padding:2px 6px;
     border-radius:999px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08);
   }
   .badge.pro{ border-color:rgba(255,166,87,.5); background:rgba(255,166,87,.15); color:#FFA657; }
   .badge.free{ border-color:rgba(11,226,160,.35); background:rgba(11,226,160,.15); color:#0be2a0; }
-  .edu-emoji{ font-size:1.6rem; }
-  .edu-title{ font-weight:800; line-height:1.2; }
-  .edu-desc{ font-size:.95rem; opacity:.9; min-height:34px; }
-  .edu-meta{ font-size:.85rem; opacity:.85; }
 </style>

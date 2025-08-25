@@ -253,7 +253,7 @@ function toggleDay(i: number) {
 
             {#if notif === "insecure"}
               <div class="n-s">
-                Za sistemske notifikacije treba <b>HTTPS</b> ili <b>localhost</b>.
+              .
               </div>
               <button class="btn-ghost" aria-disabled="true" style="opacity:.6; pointer-events:none;">Dozvoli</button>
             {:else if notif === "unsupported"}
@@ -275,22 +275,41 @@ function toggleDay(i: number) {
 {/if}
 
 <style>
-  .overlay{ position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.6); display:grid; place-items:center; padding:16px; }
+  /* ⬆ povisili z-index da prebaci Tabbar (koji je ~120) */
+  .overlay{
+    position:fixed; inset:0; z-index:300;
+    background:rgba(0,0,0,.6);
+    display:grid; place-items:center; padding:16px;
+  }
+
+  /* ⬇ dodali: max-height, grid redove, overflow:auto da tijelo modala skrola */
   .modal{
     width:min(560px, 96vw);
+    max-height: calc(100svh - 24px);           /* NOVO */
+    display: grid;                              /* NOVO */
+    grid-template-rows: auto 1fr auto;          /* NOVO */
+    overflow: auto;                              /* NOVO */
+
     border-radius:16px; padding:14px 14px 12px;
-    background: radial-gradient(1200px 500px at -20% -20%, rgba(11,226,160,.06), transparent 40%),
-                radial-gradient(800px 600px at 120% 120%, rgba(255,255,255,.04), transparent 45%),
-                #0f1115;
+    background:
+      radial-gradient(1200px 500px at -20% -20%, rgba(11,226,160,.06), transparent 40%),
+      radial-gradient(800px 600px at 120% 120%, rgba(255,255,255,.04), transparent 45%),
+      #0f1115;
     border:1px solid rgba(255,255,255,.10);
     box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 24px 48px rgba(0,0,0,.5);
     color:#e6ebef;
   }
+
   .head{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 2px 8px; }
   .head h3{ font-size:1.05rem; font-weight:800; letter-spacing:.02em; }
   .x{ background:none; border:none; color:#e6ebef; font-size:18px; opacity:.8; cursor:pointer; }
-  .body{ display:grid; gap:12px; padding:6px 2px 2px; }
-  .field .lab{ font-size:.9rem; opacity:.85; margin-bottom:6px; }
+
+  .body{
+    display:grid; gap:12px; padding:6px 2px 2px;
+    padding-bottom: 8px; /* malo mjesta iznad sticky footera */
+  }
+
+  .field .lab{ font-size:.9rem; opacity:.85; margin-bottom:3px; }
   .input{
     width:100%; padding:10px 12px; border-radius:12px;
     background:#0b0f14; border:1px solid rgba(255,255,255,.14); color:#e6ebef; font-weight:600;
@@ -306,21 +325,27 @@ function toggleDay(i: number) {
     background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
     border-radius:10px; padding:8px 10px;
   }
+
   .days { display:flex; gap:.5rem; flex-wrap:wrap; }
   .days button{
     padding:.4rem .6rem; border-radius:.5rem; border:1px solid rgba(255,255,255,.30);
     background:transparent; color:#e6ebef; font-weight:700; opacity:.8; cursor:pointer;
   }
   .days button.active{ opacity:1; outline:2px solid currentColor; }
-  .toggle{ display:flex; align-items:center; gap:12px; border-radius:12px; padding:10px 10px;
-           background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.10); }
+
+  .toggle{
+    display:flex; align-items:center; gap:12px; border-radius:12px; padding:10px 10px;
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.10);
+  }
   .toggle input{ appearance: none; width:1px; height:1px; position:absolute; opacity:0; }
   .toggle span{ position:relative; width:52px; height:30px; border-radius:999px; background:rgba(255,255,255,.12); flex:0 0 auto; }
   .toggle span::after{ content:""; position:absolute; width:24px; height:24px; top:3px; left:3px; border-radius:50%; background:#fff; transition:transform .2s ease; }
   .toggle input:checked + span{ background:rgba(11,226,160,.4); }
   .toggle input:checked + span::after{ transform:translateX(22px); }
+
   .t-copy .t-h{ font-weight:800; }
   .t-copy .t-s{ font-size:.9rem; opacity:.85; }
+
   .alert-premium{
     display:flex; align-items:center; gap:10px;
     color:#ff6b6b; padding:8px 10px; border-radius:12px;
@@ -328,12 +353,23 @@ function toggleDay(i: number) {
   }
   .alert-premium .dot{ width:8px; height:8px; border-radius:50%; background:#ff6b6b; display:inline-block; }
   .alert-premium .msg{ flex:1 1 auto; }
+
   .errors { margin:.5rem 0; color:#ff6b6b; }
   .errors li{ margin-left:1rem; }
+
   .note{ margin-top:4px; padding:10px; border-radius:12px; background:rgba(255,166,87,.10); border:1px solid rgba(255,166,87,.25); }
   .n-h{ font-weight:800; color:#FFA657; margin-bottom:4px; }
   .n-s{ font-size:.9rem; opacity:.95; margin-bottom:8px; }
-  .foot{ display:flex; justify-content:flex-end; gap:10px; padding-top:10px; }
+
+  /* ⬇ footer je “zalijepljen” u dnu modala i uvijek vidljiv */
+  .foot{
+    position: sticky; bottom: 0;                 /* NOVO */
+    background:#0f1115;                          /* NOVO (pokriva sadržaj ispod) */
+    padding-top:10px;                             /* postojeće + */
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0)); /* NOVO */
+    display:flex; justify-content:flex-end; gap:10px;
+  }
+
   .btn-ghost{
     background:none; border:1px solid rgba(255,255,255,.18); color:#e6ebef;
     border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer;
@@ -344,3 +380,4 @@ function toggleDay(i: number) {
   }
   .btn-compact{ padding:8px 12px; font-size:.92rem; }
 </style>
+

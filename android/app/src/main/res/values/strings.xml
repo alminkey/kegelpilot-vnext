@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KegelPilot</string>
+    <string name="title_activity_main">KegelPilot</string>
+    <string name="package_name">com.kegelpilot.app</string>
+    <string name="custom_url_scheme">com.kegelpilot.app</string>
+</resources>
