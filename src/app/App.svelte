@@ -1,50 +1,35 @@
 <script lang="ts">
-  
-  import Header from './Header.svelte';
-  import Tabbar from './Tabbar.svelte';
-  import { kp } from "@/store/kp";
-  import { route } from "@/store/router";
-  import Home     from '@/features/home/Home.svelte';
-  import Training from '@/features/training/Training.svelte';
-  import Progress from '@/features/progress/Progress.svelte';
-  import Profile  from '@/features/profile/Profile.svelte';
-  import Edu      from '@/features/edu/Edu.svelte';
-  import Pro      from '@/features/pro/Pro.svelte';
-
   import { onMount } from "svelte";
-  import { startDayRolloverWatcher, stopDayRolloverWatcher } from "@/store/date";
-  import { initUserPersistence } from "@/store/user";
-
+  import Header from "@/app/Header.svelte";
+  import Tabbar from "@/app/Tabbar.svelte";
   import PaywallHost from "@/components/PaywallHost.svelte";
-  import Toast from "@/components/Toast.svelte";
+
+  /* Rute (minimalni hash-router) */
+  import Home from "@/features/home/Home.svelte";
+  import Edu from "@/features/edu/Edu.svelte";
+  import Pro from "@/features/pro/Pro.svelte";
+
+  let route = "home";
+  function syncRoute() {
+    const h = location.hash.replace(/^#\/?/, "");
+    route = h || "home";
+  }
 
   onMount(() => {
-    initUserPersistence();
-    startDayRolloverWatcher();
-    return () => stopDayRolloverWatcher();
-  });
-  onMount(() => {
-    kp.init();
-    // Ako želiš i lagani ticker za rollover (npr. svake 3 min):
-    const t = setInterval(() => kp.maybeRollover(), 180_000);
-    return () => clearInterval(t);
+    syncRoute();
+    window.addEventListener("hashchange", syncRoute);
+    return () => window.removeEventListener("hashchange", syncRoute);
   });
 </script>
 
 <Header />
 
 <main class="page">
-  {#if $route === 'home'}
+  {#if route === "home"}
     <Home />
-  {:else if $route === 'training'}
-    <Training />
-  {:else if $route === 'edu'}
+  {:else if route === "edu"}
     <Edu />
-  {:else if $route === 'progress'}
-    <Progress />
-  {:else if $route === 'profile'}
-    <Profile />
-  {:else if $route === 'pro'}
+  {:else if route === "pro"}
     <Pro />
   {:else}
     <Home />
@@ -53,22 +38,14 @@
 
 <Tabbar />
 
+<!-- MORA biti mountan jednom u aplikaciji da bi paywall radio -->
 <PaywallHost />
-<Toast />
 
 <style>
-  :root{
-    /* Visina tabbara (koristi i Tabbar.svelte) */
-    --tabbar-h: 80px;
-    --bg: #0b0f14;
-  }
-  :global(html, body){ margin:0; height:100%; background: var(--bg); }
-  :global(*), :global(*::before), :global(*::after){ box-sizing:border-box; }
-
-  /* Rezerviši prostor da sadržaj ne ulazi ispod fiksiranog tabbara */
-  .page{
-    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0));
-    max-width: 680px; width: 100%; margin: 0 auto; overflow-x: clip;
-    min-height: 100svh;
+  .page {
+    /* dno ostavimo prostor za Tabbar da ne preklapa sadržaj */
+    padding: 12px 12px 96px;
+    min-height: calc(100vh - 56px); /* ~visina hedera */
+    box-sizing: border-box;
   }
 </style>
