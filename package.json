@@ -28,6 +28,7 @@
     "@capacitor/android": "^5.7.8",
     "@capacitor/core": "^5.7.8",
     "@stripe/stripe-js": "^7.8.0",
+    "localforage": "^1.10.0",
     "svelte": "^4.2.0"
   },
   "devDependencies": {
