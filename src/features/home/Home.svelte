@@ -270,7 +270,14 @@
   <div class="card remind">
     <div class="row-top">
       <div class="title">Podsjetnik</div>
-      <button class="btn-primary" on:click={handleAdd}>Dodaj još</button>
+<button
+  type="button"
+  class="btn-primary"
+  data-testid="btn-rem-add"
+  on:click={handleAdd}
+>
+  Dodaj još
+</button>
     </div>
 
     {#if $reminders.length === 0}
