@@ -1,7 +1,8 @@
 <script lang="ts">
+  
   import Header from './Header.svelte';
   import Tabbar from './Tabbar.svelte';
-
+  import { kp } from "@/store/kp";
   import { route } from "@/store/router";
   import Home     from '@/features/home/Home.svelte';
   import Training from '@/features/training/Training.svelte';
@@ -21,6 +22,12 @@
     initUserPersistence();
     startDayRolloverWatcher();
     return () => stopDayRolloverWatcher();
+  });
+  onMount(() => {
+    kp.init();
+    // Ako želiš i lagani ticker za rollover (npr. svake 3 min):
+    const t = setInterval(() => kp.maybeRollover(), 180_000);
+    return () => clearInterval(t);
   });
 </script>
 
