@@ -1,11 +1,17 @@
 <script lang="ts">
   import TrainingRing from './TrainingRing.svelte';
   import { runSession, type PhaseName } from '@/features/training/engine';
+
+  // — stari store (za UI bindove i feedback); BEZ completeSession
   import {
     s, today, goal,
-    completeSession, abortSession,
+    abortSession,
     shouldAskFeedback, feedbackOkRank, feedbackTooHardRank
   } from '@/store/kpStore';
+
+  // — novi store: samo završetak sesije zapisujemo ovdje
+  import { completeSession as coreComplete } from '@/store/kp';
+
   import { go } from '@/store/router';
   import { get } from 'svelte/store';
 
@@ -52,16 +58,20 @@
         totalMs       = u.totalMs;
         prepareMs     = u.prepareMs;
       },
-      onDone: () => {
+      onDone: async () => {
         running = false;
-        completeSession();
+
+        // ⬇️ Zapiši sesiju SAMO u vNext store.
+        // kp.ts će emitovati "session-complete" i "progress-updated" na document,
+        // a kpStore ih već sluša i sinhronizuje "Danas".
+        await coreComplete();
+
         if (shouldAskFeedback()) { showFeedback = true; step = 'question'; }
         else { go('home'); }
       }
     });
   }
 
-  // STOP ostaje na Trainingu (bez navigacije)
   function stop() {
     controller?.stop();
     running = false;
@@ -74,7 +84,6 @@
     phase === 'hold'    ? 'Zadrži' :
                           'Opusti';
 
-  // % napretka bez “pripreme”
   $: trainProg = totalMs > 0
     ? Math.max(0, Math.min(1, (totalElapsed - prepareMs) / Math.max(1, totalMs - prepareMs)))
     : 0;
@@ -83,16 +92,14 @@
     ? `${Math.max(1, Math.ceil((stepMs - stepElapsed)/1000))}s`
     : `${Math.round(trainProg*100)}%`;
 
-  // unutrašnji puls (samo tokom treninga)
   $: innerPulse =
     phase === 'squeeze' ? stepProgress :
     phase === 'hold'    ? 1 :
     phase === 'release' ? 1 - stepProgress :
                           0;
 
-  // “prepare” puls na vanjskom ringu
   const PREP_PULSES = 2;
-  $: prepWave   = (1 - Math.cos(2 * Math.PI * PREP_PULSES * stepProgress)) / 2; // 0..1
+  $: prepWave   = (1 - Math.cos(2 * Math.PI * PREP_PULSES * stepProgress)) / 2;
   $: ringOpacity  = phase === 'prepare' ? (1 - 0.5 * prepWave) : 1;
   $: ringProgress = phase === 'prepare' ? 1 : trainProg;
 
@@ -117,7 +124,6 @@
         ringOpacity={ringOpacity}
       />
 
-      <!-- START/STOP – centrirano dugme, bez „bijelog kvadratića“ -->
       <button
         class="center-ctrl"
         type="button"
@@ -192,88 +198,29 @@
 {/if}
 
 <style>
+  /* (isti stilovi kao kod tebe) */
   .card { padding:16px; border:1px solid #2a2f36; border-radius:12px; background:#0f1115; }
   .training { padding:24px; display:grid; gap:16px; place-items:center; }
-
-  .phase-title{
-    text-align:center;
-    color:#2ee0a6;
-    font-weight:800;
-    font-size:clamp(18px, 4vw, 22px);
-    margin:4px 0 8px;
-  }
-
-  .ring-box{
-    position:relative;
-    display:grid;
-    place-items:center;
-    width:100%;
-    max-width:420px;
-    aspect-ratio:1;
-    margin:6px auto 10px;
-  }
+  .phase-title{ text-align:center; color:#2ee0a6; font-weight:800; font-size:clamp(18px, 4vw, 22px); margin:4px 0 8px; }
+  .ring-box{ position:relative; display:grid; place-items:center; width:100%; max-width:420px; aspect-ratio:1; margin:6px auto 10px; }
   .ring-box :global(svg){ width:100%; height:100%; display:block; }
-
-  .center-ctrl{
-    position:absolute;
-    left:50%; top:50%;
-    transform:translate(-50%,-50%);
-    z-index:12;
-    cursor:pointer;
-    user-select:none;
-    -webkit-tap-highlight-color:transparent;
-
-    /* izgled – može biti i čisti tekst; ovo je blagi „glow“ */
-    padding:0;
-    width:44%;
-    max-width:220px;
-    aspect-ratio:1;
-    border-radius:9999px;
-    border:none;
-    background: radial-gradient(circle at 50% 50%,
-               rgba(255,166,87,.28), rgba(255,166,87,.08) 60%, rgba(0,0,0,0) 75%);
-    color:#fff;
-    font-weight:800;
-    font-size:clamp(18px, 4vw, 22px);
-    outline:none; box-shadow:none;
-  }
+  .center-ctrl{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:12; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; padding:0; width:44%; max-width:220px; aspect-ratio:1; border-radius:9999px; border:none; background: radial-gradient(circle at 50% 50%, rgba(255,166,87,.28), rgba(255,166,87,.08) 60%, rgba(0,0,0,0) 75%); color:#fff; font-weight:800; font-size:clamp(18px, 4vw, 22px); outline:none; box-shadow:none; }
   .center-ctrl:focus, .center-ctrl:focus-visible{ outline:none; box-shadow:none; }
-
-  .metric{
-    text-align:center;
-    font-weight:800;
-    font-size:clamp(18px, 4.5vw, 22px);
-    line-height:1.15;
-    margin:10px 0 14px;
-  }
-
+  .metric{ text-align:center; font-weight:800; font-size:clamp(18px, 4.5vw, 22px); line-height:1.15; margin:10px 0 14px; }
   .info-grid{ display:grid; gap:12px; margin-top:6px; width:100%; }
   @media (min-width:720px){ .info-grid{ grid-template-columns:1fr 1fr; } }
-
   .title{ font-weight:800; margin-bottom:8px; text-align:left; }
-  .tips{ text-align:left; }
   .tips ul{ list-style:disc; margin:0 0 0 18px; padding:0; }
   .tips li{ opacity:.9; margin:4px 0; }
-
-  .stats{ text-align:left; }
   .stats .grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
   .stats .k{ opacity:.75; font-size:.9rem; }
   .stats .v{ font-weight:800; letter-spacing:.02em; }
-  .stats .bar{
-    grid-column:1 / -1;
-    margin-top:6px; padding:10px; border-radius:10px;
-    background:linear-gradient(90deg, #0be2a0 var(--p), rgba(255,255,255,.08) var(--p));
-    color:#e6ebef; font-weight:800; text-align:center;
-  }
-
+  .stats .bar{ grid-column:1 / -1; margin-top:6px; padding:10px; border-radius:10px; background:linear-gradient(90deg, #0be2a0 var(--p), rgba(255,255,255,.08) var(--p)); color:#e6ebef; font-weight:800; text-align:center; }
   .btn{ padding:10px 16px; border-radius:12px; border:none; cursor:pointer; font-weight:700; }
   .btn.warn{ background:#ffb166; color:#111; }
   .btn.ghost{ background:transparent; color:#c9d1d9; border:1px solid rgba(255,255,255,.15); }
   .link{ background:none; border:none; color:#81D4FA; margin-top:12px; cursor:pointer; }
-
-  .modal-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.45);
-                  display:flex; align-items:center; justify-content:center; z-index:100; }
-  .modal{ width:min(480px, 92vw); background:#11151b; border:1px solid #2a2f36;
-          border-radius:16px; padding:20px; text-align:center; }
+  .modal-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:100; }
+  .modal{ width:min(480px, 92vw); background:#11151b; border:1px solid #2a2f36; border-radius:16px; padding:20px; text-align:center; }
   .row{ display:flex; gap:10px; justify-content:center; margin:12px 0; flex-wrap:wrap; }
 </style>
