@@ -5,7 +5,7 @@
   import type { ValidationError } from "@/store/reminders";
   import { openPaywall } from "@/lib/gate";
   import { lockScroll, unlockScroll } from "@/lib/scrollLock";
-
+  
   export let open = false;
   export let data: EditorData = {
     label: "Vrijeme za vježbu",

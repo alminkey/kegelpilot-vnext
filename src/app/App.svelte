@@ -6,6 +6,9 @@
 
   /* Rute (minimalni hash-router) */
   import Home from "@/features/home/Home.svelte";
+  import Training from "@/features/training/Training.svelte";
+  import Progress from "@/features/progress/Progress.svelte";
+  import Profile from "@/features/profile/Profile.svelte";
   import Edu from "@/features/edu/Edu.svelte";
   import Pro from "@/features/pro/Pro.svelte";
 
@@ -27,6 +30,12 @@
 <main class="page">
   {#if route === "home"}
     <Home />
+  {:else if route === "training"}
+    <Training />
+  {:else if route === "progress"}
+    <Progress />
+  {:else if route === "profile"}
+    <Profile />
   {:else if route === "edu"}
     <Edu />
   {:else if route === "pro"}

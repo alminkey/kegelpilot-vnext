@@ -359,7 +359,7 @@ s.subscribe((st) => {
   savePersist(st.today);
 });
 
-// ——— Čuvar ponoći (lokalni datum) ———
+// ——— Čuvar ponoći (lokalni datum) + BRIDGE sa core/store-om ———
 if (typeof window !== "undefined") {
   const checkDay = () => {
     try {
@@ -399,4 +399,20 @@ if (typeof window !== "undefined") {
   });
   // inicijalni check (u slučaju hladnog starta poslije ponoći)
   setTimeout(checkDay, 0);
+
+  // ——— BRIDGE: kad core/trening objavi sesiju, uvećaj i lokalni today ———
+  document.addEventListener("session-complete", () => {
+    // Ako trening završava u drugom store-u, ovdje sinhronizujemo lokalni dnevni progres
+    completeSession();
+  });
+  // (opciono) ako negdje postoji centralni rollover – sinkronizuj:
+  document.addEventListener("day-rollover", () => {
+    resetToday();
+  });
+  // (opciono) samo pingaj re-render:
+  document.addEventListener("progress-updated", () => {
+    try {
+      change.set(Date.now());
+    } catch {}
+  });
 }

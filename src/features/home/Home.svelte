@@ -24,7 +24,7 @@
   $: rankPct = Math.round(($goal.percent ?? 0) * 100);
 
   const startTraining = () => go('training');
-  const openPro       = () => go('profile');
+  const openPro       = () => go('pro'); // otvara isti paywall kao badge u headeru
 
   // Savjet dana
   const tips = [
@@ -138,7 +138,7 @@
       });
       if (!res.ok) {
         openPaywall("reminders.multi", { source: "home_add" });
-    return;
+        return;
       }
     } else {
       reminders.updateOne(d.id!, {
@@ -164,7 +164,6 @@
   ];
 
   function openEdu(it: EduItem){
-    // PRO-only lekcije su “edu.advanced”
     if (it.pro && !isAllowed("edu.advanced")) {
       openPaywall("edu.advanced", { from: "home_edu_card", id: it.id });
       return;
@@ -227,10 +226,17 @@
 
   <!-- EDU -->
   <div class="edu card">
-    <div class="row-top">
+    <div
+      class="row-top"
+      role="button"
+      tabindex="0"
+      on:click={() => go('edu')}
+      on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('edu'); } }}
+    >
       <div class="title">Edukacija</div>
-      <button class="see" on:click={() => go('edu')}>Vidi sve</button>
+      <button class="see" type="button" on:click|stopPropagation={() => go('edu')}>Vidi sve</button>
     </div>
+
     <div class="lane" aria-label="Edu lekcije">
       {#each eduItems as it}
         <button
@@ -268,16 +274,17 @@
 
   <!-- PODSJETNIK -->
   <div class="card remind">
+    <!-- ⬇️ više NIJE klikabilan cijeli header; ostaje samo dugme -->
     <div class="row-top">
       <div class="title">Podsjetnik</div>
-<button
-  type="button"
-  class="btn-primary"
-  data-testid="btn-rem-add"
-  on:click={handleAdd}
->
-  Dodaj još
-</button>
+      <button
+        type="button"
+        class="btn-primary"
+        data-testid="btn-rem-add"
+        on:click={handleAdd}
+      >
+        Dodaj još
+      </button>
     </div>
 
     {#if $reminders.length === 0}
@@ -292,7 +299,6 @@
               <div class="r-sub">{daysLabel(r.daysOfWeek)}</div>
             </div>
 
-            <!-- a11y switch -->
             <label class="switch" title={r.enabled ? "Isključi" : "Uključi"}>
               <input
                 type="checkbox"
@@ -329,7 +335,6 @@
     <span class="pro-cta">Probaj 7 dana</span>
   </button>
 
-  <!-- EDITOR MODAL -->
   <ReminderEditorModal
     bind:open={editorOpen}
     mode={editorMode}
