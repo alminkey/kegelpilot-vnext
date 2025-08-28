@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { today, goal } from '@/store/kpStore';
-  import { go } from '@/store/router';
-  import { onMount } from 'svelte';
+  import { today, goal } from "@/store/kpStore";
+  import { go } from "@/store/router";
+  import { onMount } from "svelte";
   import { localDateKey } from "@/store/date";
   
   /* REMINDERS */
@@ -11,8 +11,13 @@
   import type { EditorData } from "@/components/reminder-types";
 
   /* PRO gate za Edu */
-  import { isPro } from "@/store/user";
+  import { isPro, isProPaid } from "@/store/user";
   import { isAllowed, openPaywall } from "@/lib/gate";
+
+  /* Trial + payments sloj */
+  import { trial, initTrial } from "@/store/trial";
+  import { startCheckout } from "@/lib/payments";
+  import { showToast } from "@/store/toast";
 
   $: dailyDone   = $today.done;
   $: dailyTarget = $today.target;
@@ -23,25 +28,39 @@
   $: length = $goal.length;
   $: rankPct = Math.round(($goal.percent ?? 0) * 100);
 
-  const startTraining = () => go('training');
-  const openPro       = () => go('pro'); // otvara isti paywall kao badge u headeru
+  // Trial status za UI
+  $: trialActive = $trial.active;
+  $: trialLeft   = $trial.daysLeft;
+
+  const startTraining = () => go("training");
+  const openPro       = () => go("pro");
+
+  // Ako nema PRO i nema aktivnog triala -> pokreni trial checkout (MOCK: lokalni trial)
+  async function handleProCardClick() {
+    if (!$isPro && !$isProPaid && !trialActive) {
+      await startCheckout({ plan: "monthly", trial: true });
+      try { showToast("Probni period aktiviran 🎉"); } catch {}
+      return;
+    }
+    openPro();
+  }
 
   // Savjet dana
   const tips = [
-    'Diši ravnomjerno — udah kroz nos, izdah duži.',
-    'Ako osjetiš bol ili trnce, prekini i odmori.',
-    'Fokus na dno karlice — ne steži zadnjicu/bedra.',
-    'Postura: duga kičma, opuštena ramena.',
-    'Kvalitet > snaga — kontrola pokreta.'
+    "Diši ravnomjerno — udah kroz nos, izdah duži.",
+    "Ako osjetiš bol ili trnce, prekini i odmori.",
+    "Fokus na dno karlice — ne steži zadnjicu/bedra.",
+    "Postura: duga kičma, opuštena ramena.",
+    "Kvalitet > snaga — kontrola pokreta."
   ];
   $: tip = tips[new Date().getDay() % tips.length];
 
   // Weekly streak
   type DayStatus = 0|1|2;
-  const LS_HISTORY = 'kp_history_v1';
+  const LS_HISTORY = "kp_history_v1";
   const iso = (d:Date)=>d.toISOString().slice(0,10);
   let history: Record<string,DayStatus> = {};
-  function loadHistory(){ try{ history = JSON.parse(localStorage.getItem(LS_HISTORY) || '{}') }catch{ history = {} } }
+  function loadHistory(){ try{ history = JSON.parse(localStorage.getItem(LS_HISTORY) || "{}") }catch{ history = {} } }
   function saveHistory(){ try{ localStorage.setItem(LS_HISTORY, JSON.stringify(history)) }catch{} }
   function updateTodayFromStore(){
     const key = iso(new Date());
@@ -61,19 +80,20 @@
   $: week = last7();
 
   onMount(()=>{
+    initTrial(); // računanje preostalih dana + downgrade po isteku
     loadHistory(); updateTodayFromStore();
     const h = ()=>{ loadHistory(); updateTodayFromStore(); week = last7(); };
-    document.addEventListener('progress-updated', h);
-    document.addEventListener('day-rollover', h);
-    document.addEventListener('tz-changed', h);
+    document.addEventListener("progress-updated", h);
+    document.addEventListener("day-rollover", h);
+    document.addEventListener("tz-changed", h);
     return ()=>{
-      document.removeEventListener('progress-updated', h);
-      document.removeEventListener('day-rollover', h);
-      document.removeEventListener('tz-changed', h);
+      document.removeEventListener("progress-updated", h);
+      document.removeEventListener("day-rollover", h);
+      document.removeEventListener("tz-changed", h);
     };
   });
 
-  const labelFor = (d:string)=>['Ned','Pon','Uto','Sri','Čet','Pet','Sub'][new Date(d).getDay()];
+  const labelFor = (d:string)=>["Ned","Pon","Uto","Sri","Čet","Pet","Sub"][new Date(d).getDay()];
 
   /* ---------- Reminders UI helpers ---------- */
   const FULL_WEEK = [0,1,2,3,4,5,6];
@@ -155,12 +175,12 @@
   /* ---------- Edu PRO gate ---------- */
   type EduItem = { id:string; title:string; desc:string; duration:string; emoji:string; pro?:boolean };
   const eduItems:EduItem[] = [
-    { id:'breath',   title:'Disanje 101',     desc:'Ritam i dijafragma',   duration:'2 min', emoji:'🌬️' },
-    { id:'posture',  title:'Postura',         desc:'Neutralna kičma',      duration:'2 min', emoji:'🧍'  },
-    { id:'mobility', title:'Pelvic mobility', desc:'Lagano opuštanje',     duration:'3 min', emoji:'🧘', pro:true },
-    { id:'awareness',title:'Svjesnost',       desc:'Mind–muscle konekcija',duration:'2 min', emoji:'🧠'  },
-    { id:'recovery', title:'Recovery',        desc:'Opusti i resetuj',     duration:'3 min', emoji:'🛌', pro:true },
-    { id:'mistakes', title:'Česte greške',    desc:'Šta izbjegavati',      duration:'1 min', emoji:'⚠️'  },
+    { id:"breath",   title:"Disanje 101",     desc:"Ritam i dijafragma",   duration:"2 min", emoji:"🌬️" },
+    { id:"posture",  title:"Postura",         desc:"Neutralna kičma",      duration:"2 min", emoji:"🧍"  },
+    { id:"mobility", title:"Pelvic mobility", desc:"Lagano opuštanje",     duration:"3 min", emoji:"🧘", pro:true },
+    { id:"awareness",title:"Svjesnost",       desc:"Mind–muscle konekcija",duration:"2 min", emoji:"🧠"  },
+    { id:"recovery", title:"Recovery",        desc:"Opusti i resetuj",     duration:"3 min", emoji:"🛌", pro:true },
+    { id:"mistakes", title:"Česte greške",    desc:"Šta izbjegavati",      duration:"1 min", emoji:"⚠️"  },
   ];
 
   function openEdu(it: EduItem){
@@ -168,7 +188,7 @@
       openPaywall("edu.advanced", { from: "home_edu_card", id: it.id });
       return;
     }
-    go('edu');
+    go("edu");
   }
 </script>
 
@@ -216,12 +236,12 @@
 
   <!-- QUICK -->
   <div class="quick">
-    <button class="q" on:click={() => go('training')}>
+    <button class="q" on:click={() => go("training")}>
       <span class="q-emoji">🏁</span>
       <span class="q-t">Brzi start</span>
     </button>
-    <button class="q" on:click={() => go('progress')}><span class="q-emoji">📈</span><span class="q-t">Napredak</span></button>
-    <button class="q" on:click={() => go('edu')}><span class="q-emoji">🎓</span><span class="q-t">Edukacija</span></button>
+    <button class="q" on:click={() => go("progress")}><span class="q-emoji">📈</span><span class="q-t">Napredak</span></button>
+    <button class="q" on:click={() => go("edu")}><span class="q-emoji">🎓</span><span class="q-t">Edukacija</span></button>
   </div>
 
   <!-- EDU -->
@@ -230,11 +250,11 @@
       class="row-top"
       role="button"
       tabindex="0"
-      on:click={() => go('edu')}
-      on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('edu'); } }}
+      on:click={() => go("edu")}
+      on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go("edu"); } }}
     >
       <div class="title">Edukacija</div>
-      <button class="see" type="button" on:click|stopPropagation={() => go('edu')}>Vidi sve</button>
+      <button class="see" type="button" on:click|stopPropagation={() => go("edu")}>Vidi sve</button>
     </div>
 
     <div class="lane" aria-label="Edu lekcije">
@@ -247,7 +267,7 @@
           aria-label={it.title}
           title={it.title}
         >
-          <div class="badge" class:pro={it.pro}>{it.pro ? 'PRO' : 'FREE'}</div>
+          <div class="badge" class:pro={it.pro}>{it.pro ? "PRO" : "FREE"}</div>
           <div class="edu-emoji">{it.emoji}</div>
           <div class="edu-title">{it.title}</div>
           <div class="edu-desc">{it.desc}</div>
@@ -274,7 +294,6 @@
 
   <!-- PODSJETNIK -->
   <div class="card remind">
-    <!-- ⬇️ više NIJE klikabilan cijeli header; ostaje samo dugme -->
     <div class="row-top">
       <div class="title">Podsjetnik</div>
       <button
@@ -322,7 +341,12 @@
   </div>
 
   <!-- PRO (button – rješava a11y) -->
-  <button type="button" class="card pro" on:click={openPro} aria-label="Otvori KegelPilot PRO">
+  <button
+    type="button"
+    class="card pro"
+    on:click={handleProCardClick}
+    aria-label="KegelPilot PRO / probni period"
+  >
     <div class="pro-main">
       <div class="pro-title">KegelPilot PRO</div>
       <ul>
@@ -331,8 +355,24 @@
         <li>Sedmični i mjesečni izvještaji</li>
         <li>Više podsjetnika + pametni nudge</li>
       </ul>
+
+      {#if trialActive && !$isProPaid}
+        <div class="trial-status">
+          <span class="dot"></span>
+          Probni period aktivan — preostalo <b>{trialLeft}</b> {trialLeft === 1 ? "dan" : "dana"}
+        </div>
+      {/if}
     </div>
-    <span class="pro-cta">Probaj 7 dana</span>
+
+    <span class="pro-cta" data-state={$isProPaid ? "pro" : (trialActive ? "active" : "idle")}>
+      {#if $isProPaid}
+        PRO aktivan
+      {:else if trialActive}
+        {trialLeft} {trialLeft === 1 ? "dan" : "dana"} preostalo
+      {:else}
+        Probaj 7 dana
+      {/if}
+    </span>
   </button>
 
   <ReminderEditorModal
@@ -528,8 +568,24 @@
   }
   .pro-title{ font-weight:900; letter-spacing:.02em; }
   .pro ul{ margin:6px 0 0 18px; padding:0; }
+
+  .trial-status{
+    margin-top:8px; font-size:.92rem; display:flex; align-items:center; gap:8px;
+    color:#cfe9ff;
+  }
+  .trial-status .dot{
+    width:8px; height:8px; border-radius:999px; background:#81D4FA;
+  }
+
   .pro-cta{
     background:#0be2a0; color:#0f1115; border-radius:12px;
     padding:10px 14px; font-weight:800; box-shadow:0 10px 24px rgba(11,226,160,.18);
+  }
+  .pro-cta[data-state="active"]{
+    background:#FFA657; color:#0f1115; box-shadow:0 10px 24px rgba(255,166,87,.18);
+  }
+  .pro-cta[data-state="pro"]{
+    background:rgba(11,226,160,.14); color:#0be2a0; border:1px solid rgba(11,226,160,.45);
+    box-shadow:none;
   }
 </style>
