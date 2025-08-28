@@ -1,5 +1,9 @@
-export type PhaseName = "prepare" | "squeeze" | "hold" | "release";
-export type Step = { name: PhaseName; ms: number };
+// src/features/training/engine.ts
+import type { PhaseName, Step } from "@/store/tuning";
+import { scaleStepsByFactor } from "@/store/tuning";
+import { baseStepsForRank, applyDevShort } from "@/features/training/plans";
+
+export type { PhaseName, Step };
 
 type UpdatePayload = {
   totalProgress: number; // 0..1 kroz cijelu sesiju (uklj. prepare)
@@ -9,32 +13,29 @@ type UpdatePayload = {
   stepElapsed: number; // ms unutar trenutne faze
   totalElapsed: number; // ms od početka sesije
   totalMs: number; // ukupan ms sesije
-  prepareMs: number; // trajanje prepare faze (za UI kalkulacije)
+  prepareMs: number; // trajanje prepare faze
 };
 
 type RunOpts = {
   devShort: boolean;
+  rank: number;
+  factor: number;
   onPhase?: (name: PhaseName) => void;
   onUpdate?: (p: UpdatePayload) => void;
   onDone?: () => void;
 };
 
-// Minimalni program: 2s prepare → 3s squeeze → 3s hold → 3s release
-function buildSteps(devShort: boolean): Step[] {
-  const ms = (normal: number, short: number) => (devShort ? short : normal);
-  return [
-    { name: "prepare", ms: ms(2000, 1000) },
-    { name: "squeeze", ms: ms(3000, 1200) },
-    { name: "hold", ms: ms(3000, 1200) },
-    { name: "release", ms: ms(3000, 1200) },
-  ];
+function buildSteps(devShort: boolean, rank: number, factor: number): Step[] {
+  const base = baseStepsForRank(rank);
+  const scaled = scaleStepsByFactor(base, factor);
+  return applyDevShort(scaled, devShort);
 }
 
 /** Pokreni jednu sesiju – vraća kontroler sa stop() */
 export function runSession(opts: RunOpts) {
-  const steps = buildSteps(opts.devShort);
+  const steps = buildSteps(opts.devShort, opts.rank, opts.factor);
   const totalMs = steps.reduce((a, s) => a + s.ms, 0);
-  const prepareMs = steps[0].ms;
+  const prepareMs = steps.find((s) => s.name === "prepare")?.ms ?? 0;
 
   let i = 0;
   let rafId: number | null = null;

@@ -12,6 +12,9 @@
   // — novi store: samo završetak sesije zapisujemo ovdje
   import { completeSession as coreComplete } from '@/store/kp';
 
+  // — tuning
+  import { getFactor, adjust, markAnswer } from "@/store/tuning";
+
   import { go } from '@/store/router';
   import { get } from 'svelte/store';
 
@@ -44,10 +47,14 @@
   function start() {
     running = true;
     const devShort = get(s).devShort;
+    const rank = get(goal).rank ?? 1;
+    const factor = getFactor(String(rank));
 
     controller?.stop();
     controller = runSession({
       devShort,
+      rank,
+      factor,
       onPhase: (p) => { phase = p; stepProgress = 0; },
       onUpdate: (u) => {
         progress      = u.totalProgress;
@@ -60,12 +67,7 @@
       },
       onDone: async () => {
         running = false;
-
-        // ⬇️ Zapiši sesiju SAMO u vNext store.
-        // kp.ts će emitovati "session-complete" i "progress-updated" na document,
-        // a kpStore ih već sluša i sinhronizuje "Danas".
         await coreComplete();
-
         if (shouldAskFeedback()) { showFeedback = true; step = 'question'; }
         else { go('home'); }
       }
@@ -84,13 +86,16 @@
     phase === 'hold'    ? 'Zadrži' :
                           'Opusti';
 
+  // napredak kruga ostaje isti (0..1 kroz aktivni dio)
   $: trainProg = totalMs > 0
     ? Math.max(0, Math.min(1, (totalElapsed - prepareMs) / Math.max(1, totalMs - prepareMs)))
     : 0;
 
-  $: metric = phase === 'prepare'
-    ? `${Math.max(1, Math.ceil((stepMs - stepElapsed)/1000))}s`
-    : `${Math.round(trainProg*100)}%`;
+  // METRIC: odbrojavanje
+  $: metric =
+    phase === 'prepare'
+      ? `${Math.max(1, Math.ceil((stepMs - stepElapsed)/1000))}s`              // countdown pripreme
+      : `${Math.max(0, Math.ceil((Math.max(0, (totalMs - prepareMs) - Math.max(0, totalElapsed - prepareMs))) / 1000))}s`; // countdown aktivnog dijela do 0
 
   $: innerPulse =
     phase === 'squeeze' ? stepProgress :
@@ -103,9 +108,21 @@
   $: ringOpacity  = phase === 'prepare' ? (1 - 0.5 * prepWave) : 1;
   $: ringProgress = phase === 'prepare' ? 1 : trainProg;
 
-  function fbNo()  { feedbackOkRank(); closeFb(); }
+  // --- FEEDBACK (tuning + legacy) ---
+  function fbNo()  {
+    feedbackOkRank();
+    const rank = get(goal).rank ?? 1;
+    markAnswer(String(rank), "NE");
+    closeFb();
+  }
   function fbYes() { step = 'too-hard'; }
-  function fbDelta(d: number) { feedbackTooHardRank(d); closeFb(); }
+  function fbDelta(perc: number) {
+    const rank = get(goal).rank ?? 1;
+    feedbackTooHardRank(perc);
+    adjust(String(rank), -perc); // -0.1 | -0.2 | -0.3
+    markAnswer(String(rank), "DA");
+    closeFb();
+  }
   function closeFb() { showFeedback = false; go('home'); }
 
   function toggle() { running ? stop() : start(); }
@@ -187,9 +204,9 @@
       {:else}
         <h3>Koliko olakšati?</h3>
         <div class="row">
+          <button class="btn ghost" on:click={() => fbDelta(0.1)}>10% lakše</button>
           <button class="btn ghost" on:click={() => fbDelta(0.2)}>20% lakše</button>
           <button class="btn ghost" on:click={() => fbDelta(0.3)}>30% lakše</button>
-          <button class="btn ghost" on:click={() => fbDelta(0.5)}>50% lakše</button>
         </div>
         <button class="link" on:click={closeFb}>Odustani</button>
       {/if}
@@ -198,7 +215,6 @@
 {/if}
 
 <style>
-  /* (isti stilovi kao kod tebe) */
   .card { padding:16px; border:1px solid #2a2f36; border-radius:12px; background:#0f1115; }
   .training { padding:24px; display:grid; gap:16px; place-items:center; }
   .phase-title{ text-align:center; color:#2ee0a6; font-weight:800; font-size:clamp(18px, 4vw, 22px); margin:4px 0 8px; }

@@ -5,6 +5,7 @@ export type StartCheckoutOptions = {
   email?: string;
   coupon?: string; // (opcionalno, ignorisano u stripe client-only)
   returnUrl?: string; // ako želiš custom success/cancel
+  trial?: boolean; // ⬅ NOVO: trial flow (Home CTA, "7 dana besplatno")
 };
 
 // Provider iz .env (VITE_PAYMENTS_PROVIDER=mock|stripe|paddle)
@@ -23,6 +24,9 @@ declare global {
 
 if (import.meta.env.DEV) console.debug("[payments] provider =", PROVIDER);
 
+import { startTrial } from "@/store/trial";
+import { showToast } from "@/store/toast";
+
 export async function startCheckout(opts: StartCheckoutOptions): Promise<void> {
   try {
     if (PROVIDER === "stripe") return await stripeCheckout(opts);
@@ -35,7 +39,6 @@ export async function startCheckout(opts: StartCheckoutOptions): Promise<void> {
 }
 
 /* -------------------------- DEV DEBUG -------------------------- */
-// U dev modu loguj uspjeh da je lako vidjeti flow u konzoli.
 if (import.meta.env.DEV && !window.__PAY_DEBUG_BOUND) {
   window.addEventListener("checkout:success", (e: any) => {
     console.debug("[payments] success event", e?.detail);
@@ -46,6 +49,16 @@ if (import.meta.env.DEV && !window.__PAY_DEBUG_BOUND) {
 /* ------------------------- MOCK (dev) ------------------------- */
 async function mockCheckout(opts: StartCheckoutOptions) {
   console.debug("[payments] mock startCheckout", opts);
+
+  // Trial bez kartice u MOCK modu: samo lokalno aktiviraj trial i gotovo
+  if (opts.trial) {
+    startTrial();
+    try {
+      showToast("Trial aktiviran (MOCK) 🎉");
+    } catch {}
+    return;
+  }
+
   await new Promise((r) => setTimeout(r, 450));
   window.dispatchEvent(
     new CustomEvent("checkout:success", { detail: { plan: opts.plan } })
@@ -53,12 +66,19 @@ async function mockCheckout(opts: StartCheckoutOptions) {
 }
 
 /* ------------------------- STRIPE ----------------------------- */
-// Client-only redirectToCheckout: jednostavno, bez servera.
-// Napomena: kuponi/discounts nisu podržani u ovom klijentskom modu.
+/**
+ * Client-only redirectToCheckout: jednostavno, bez servera.
+ * Trial:
+ *  - Najlakše je da Stripe Price (npr. MONTHLY) već ima podešen trial_period_days=7.
+ *  - Alternativa (dinamički trial) zahtijeva backend (Create Checkout Session sa subscription_data.trial_period_days).
+ *  - Ovdje podržavamo i varijantu sa odvojenim PRICE za trial:
+ *      VITE_STRIPE_PRICE_TRIAL_MONTHLY (opcionalno)
+ */
 async function stripeCheckout(opts: StartCheckoutOptions) {
   const pk = import.meta.env.VITE_STRIPE_PK;
   const priceMonthly = import.meta.env.VITE_STRIPE_PRICE_MONTHLY;
   const priceAnnual = import.meta.env.VITE_STRIPE_PRICE_ANNUAL;
+  const priceTrialMonthly = import.meta.env.VITE_STRIPE_PRICE_TRIAL_MONTHLY; // ⬅ opcionalno: price koji ima ugrađen trial
 
   if (!pk || !priceMonthly || !priceAnnual) {
     console.warn("[payments] stripe env vars missing → mock");
@@ -73,7 +93,15 @@ async function stripeCheckout(opts: StartCheckoutOptions) {
     return mockCheckout(opts);
   }
 
-  const priceId = opts.plan === "monthly" ? priceMonthly : priceAnnual;
+  // Ako tražimo trial i postoji posebna cijena za trial, koristi je.
+  // Inače koristi standardnu cijenu (koja može imati trial_period_days u Stripe konzoli).
+  const priceId =
+    opts.plan === "monthly"
+      ? opts.trial && priceTrialMonthly
+        ? priceTrialMonthly
+        : priceMonthly
+      : priceAnnual;
+
   const base = opts.returnUrl ?? window.location.origin;
   const successUrl = `${base}/#/pro?success=1`;
   const cancelUrl = `${base}/#/pro?canceled=1`;
@@ -84,6 +112,7 @@ async function stripeCheckout(opts: StartCheckoutOptions) {
     successUrl,
     cancelUrl,
     customerEmail: opts.email,
+    // Napomena: coupon/discount nije podržan client-only putem ovog polja; treba backend.
   });
 
   if (res?.error) {
@@ -93,11 +122,17 @@ async function stripeCheckout(opts: StartCheckoutOptions) {
 }
 
 /* ------------------------- PADDLE (Classic v3) ---------------- */
-// Ako koristiš Paddle v4, javi pa prilagodim.
+/**
+ * Trial:
+ *  - U Paddle Classic v3 se trial tipično podešava na nivou proizvoda (u dashboardu).
+ *  - Ako imaš poseban proizvod sa trialom za mjesečni plan, koristi env var:
+ *      VITE_PADDLE_PRODUCT_TRIAL_MONTHLY (opcionalno)
+ */
 async function paddleCheckout(opts: StartCheckoutOptions) {
   const vendorId = import.meta.env.VITE_PADDLE_VENDOR_ID;
   const prodMonthly = import.meta.env.VITE_PADDLE_PRODUCT_MONTHLY;
   const prodAnnual = import.meta.env.VITE_PADDLE_PRODUCT_ANNUAL;
+  const prodTrialMonthly = import.meta.env.VITE_PADDLE_PRODUCT_TRIAL_MONTHLY; // ⬅ opcionalno
 
   if (!vendorId || !prodMonthly || !prodAnnual) {
     console.warn("[payments] paddle env vars missing → mock");
@@ -112,7 +147,14 @@ async function paddleCheckout(opts: StartCheckoutOptions) {
 
   window.Paddle.Setup({ vendor: Number(vendorId) });
 
-  const product = opts.plan === "monthly" ? prodMonthly : prodAnnual;
+  // Ako je trial i ima poseban proizvod za trial → koristi njega.
+  const product =
+    opts.plan === "monthly"
+      ? opts.trial && prodTrialMonthly
+        ? prodTrialMonthly
+        : prodMonthly
+      : prodAnnual;
+
   window.Paddle.Checkout.open({
     product,
     email: opts.email,
